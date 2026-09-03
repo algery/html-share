@@ -1,0 +1,50 @@
+{
+  "name": "html-share",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": "11.19.0"
+  },
+  "scripts": {
+    "build": "pnpm db:generate && pnpm build:packages && pnpm build:apps",
+    "build:apps": "pnpm --filter './apps/**' run --if-present build",
+    "build:packages": "pnpm --filter './packages/**' run --if-present build",
+    "dev": "pnpm stack:up",
+    "dev:apps": "pnpm build:packages && pnpm dev:apps:parallel",
+    "dev:apps:parallel": "pnpm --filter './apps/**' run --parallel --stream --if-present dev",
+    "db:generate": "node --env-file=.env.example ./node_modules/prisma/build/index.js generate",
+    "db:migrate:deploy": "node --env-file=.env.example ./node_modules/prisma/build/index.js migrate deploy",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "health": "node --env-file=.env.example scripts/health-check.mjs",
+    "infra:down": "docker compose --env-file .env.example down",
+    "infra:up": "docker compose --env-file .env.example up -d --wait postgres minio",
+    "lint": "eslint . --max-warnings 0",
+    "security:check": "node scripts/check-secret-hygiene.mjs --workspace",
+    "skills:package": "node skills/build-distributions.mjs",
+    "smoke:phase2": "node scripts/phase2-smoke.mjs",
+    "smoke:phase3": "node scripts/phase3-smoke.mjs",
+    "smoke:phase4": "node scripts/phase4-smoke.mjs",
+    "smoke:phase5": "node scripts/phase5-smoke.mjs",
+    "smoke:phase6": "node scripts/phase6-smoke.mjs",
+    "smoke:phase7": "vitest run apps/server/src/phase7.test.ts packages/db/src/project-reader.test.ts",
+    "stack:up": "docker compose --env-file .env.example up -d --build --wait",
+    "test": "pnpm build:packages && vitest run",
+    "test:watch": "vitest",
+    "typecheck": "pnpm build:packages && tsc -p tsconfig.json --noEmit && pnpm --filter './apps/**' --filter './packages/**' run --if-present typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "24.13.3",
+    "eslint": "9.39.5",
+    "prettier": "3.9.6",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3",
+    "prisma": "7.9.1",
+    "typescript-eslint": "8.69.0",
+    "vitest": "4.1.0"
+  }
+}
