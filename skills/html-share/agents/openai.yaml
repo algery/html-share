@@ -1,0 +1,4 @@
+interface:
+  display_name: HTML Share 发布
+  short_description: 安全检查并发布本地静态 Demo
+  default_prompt: 分享指定目录中的 HTML Demo，并在有风险时先征得我的确认。

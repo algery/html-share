@@ -1,0 +1,44 @@
+# Dependencies and package-manager state
+node_modules/
+.pnpm-store/
+pnpm-debug.log*
+
+# Build and test output
+.next/
+build/
+coverage/
+dist/
+out/
+*.tsbuildinfo
+packages/db/src/generated/
+
+# Runtime files
+*.log
+*.pid
+.cache/
+.local/
+.tmp/
+tmp/
+
+# Environment and credentials
+.env
+.env.*
+!.env.example
+*.crt
+*.jks
+*.key
+*.p12
+*.pem
+*.pfx
+certs/
+secrets/
+
+# Local persistent data
+data/
+minio-data/
+postgres-data/
+
+# Editor and operating-system files
+.DS_Store
+.idea/
+.vscode/

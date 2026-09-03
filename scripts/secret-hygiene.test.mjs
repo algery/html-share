@@ -1,0 +1,48 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { inspectContent, scanRoot } from "./secret-hygiene.mjs";
+
+const temporaryDirectories = [];
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true })),
+  );
+});
+
+describe("secret hygiene", () => {
+  it("accepts explicit local examples and rejects broad local-looking values", () => {
+    expect(inspectContent("POSTGRES_PASSWORD=html_share_local")).toEqual([]);
+    expect(
+      inspectContent(
+        "AUTH_STATE_SECRET=local-development-state-signing-key-change-before-production\nDINGTALK_CLIENT_SECRET=\nDINGTALK_API_BASE_URL=https://api.dingtalk.com",
+      ),
+    ).toEqual([]);
+    expect(inspectContent("API_KEY=live-local-customer-value")).toEqual([
+      "non-placeholder-API_KEY",
+    ]);
+  });
+
+  it("detects long DingTalk Client Secret values without returning the value", () => {
+    const findings = inspectContent(`Client Secret：${"x".repeat(40)}`);
+    expect(findings).toEqual(["non-placeholder-DINGTALK_CLIENT_SECRET"]);
+    expect(findings.join(" ")).not.toContain("x".repeat(40));
+  });
+
+  it("fails closed when a file cannot be read", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "html-share-secret-test-"));
+    temporaryDirectories.push(directory);
+    await writeFile(join(directory, "config.txt"), "safe=true", "utf8");
+    const root = pathToFileURL(`${directory}/`);
+
+    await expect(
+      scanRoot(root, async () => {
+        throw new Error("synthetic read failure");
+      }),
+    ).resolves.toEqual([{ file: "config.txt", reason: "read-failed" }]);
+  });
+});
