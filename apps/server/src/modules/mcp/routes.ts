@@ -14,14 +14,29 @@ import { createHtmlShareMcpServer } from "./server.js";
 
 export interface McpRouteOptions {
   appHost: string;
+  demoWebUrl?: string;
+  rateLimits?: {
+    mcpPerMinute: number;
+    uploadCompletePerMinute: number;
+    uploadPreparePerMinute: number;
+  };
   storage?: ObjectStore;
   tokenService: McpTokenService;
   uploads?: UploadService;
 }
 
 export function registerMcpRoutes(app: FastifyInstance, options: McpRouteOptions) {
-  const rateLimiter = createMcpRateLimiter();
-  const uploadRateLimiter = createUploadToolRateLimiter();
+  const rateLimiter = createMcpRateLimiter(
+    options.rateLimits === undefined ? undefined : { maximum: options.rateLimits.mcpPerMinute },
+  );
+  const uploadRateLimiter = createUploadToolRateLimiter({
+    ...(options.rateLimits === undefined
+      ? {}
+      : {
+          completeMaximum: options.rateLimits.uploadCompletePerMinute,
+          prepareMaximum: options.rateLimits.uploadPreparePerMinute,
+        }),
+  });
 
   app.post("/mcp", async (request, reply) => {
     if (request.hostname !== options.appHost) {
@@ -47,8 +62,10 @@ export function registerMcpRoutes(app: FastifyInstance, options: McpRouteOptions
 
     const server = createHtmlShareMcpServer({
       token,
+      ...(options.demoWebUrl === undefined ? {} : { demoWebUrl: options.demoWebUrl }),
       ...(options.storage === undefined ? {} : { storage: options.storage }),
       ...(options.uploads === undefined ? {} : { uploads: options.uploads }),
+      traceId: request.traceId,
       uploadRateLimiter,
     });
     const transport = new NodeStreamableHTTPServerTransport({

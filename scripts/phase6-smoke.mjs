@@ -12,9 +12,9 @@ import { preflight } from "../skills/html-share/scripts/preflight.mjs";
 import { publishDemo } from "../skills/html-share/scripts/upload.mjs";
 
 const execute = promisify(execFile);
-const appUrl = "http://app.localhost:3001";
-const appWebUrl = "http://app.localhost:3000";
-const demoUrl = "http://demo.localhost:3001";
+const appUrl = process.env.HTML_SHARE_APP_URL ?? "http://app.localhost:3001";
+const appWebUrl = process.env.HTML_SHARE_APP_WEB_URL ?? "http://app.localhost:3000";
+const demoUrl = process.env.HTML_SHARE_DEMO_URL ?? "http://demo.localhost:3001";
 
 const startedAt = performance.now();
 const directory = await mkdtemp(join(tmpdir(), "html-share-phase6-smoke-"));
@@ -110,14 +110,19 @@ try {
 
 async function assertPackages() {
   const checks = [
-    ["skills/html-share/dist/codex-html-share.zip", ".codex/skills/html-share/SKILL.md"],
-    ["skills/html-share/dist/claude-code-html-share.zip", ".claude/skills/html-share/SKILL.md"],
+    ["skills/html-share/dist/codex-html-share.zip", ".codex/skills/html-share"],
+    ["skills/html-share/dist/claude-code-html-share.zip", ".claude/skills/html-share"],
   ];
-  for (const [archive, requiredPath] of checks) {
+  for (const [archive, root] of checks) {
     const result = await execute("unzip", ["-Z1", archive]);
+    const paths = result.stdout.split("\n");
     assert(
-      result.stdout.split("\n").includes(requiredPath),
+      paths.includes(`${root}/SKILL.md`) && paths.includes(`${root}/scripts/direct-upload.mjs`),
       archive + " must install the expected Skill path",
+    );
+    assert(
+      !paths.includes(`${root}/scripts/package.mjs`),
+      archive + " must not contain ZIP tooling",
     );
   }
 }
@@ -125,12 +130,17 @@ async function assertPackages() {
 async function createToken() {
   const login = await request(appUrl + "/auth/login?return_path=/tokens");
   const completed = await request(requiredHeader(login, "location"));
+  const cookie = requiredHeader(completed, "set-cookie").split(";", 1)[0];
+  const csrf = await request(appUrl + "/api/csrf", { headers: { cookie } });
+  assert(csrf.status === 200, "CSRF token creation must succeed");
+  const csrfToken = (await csrf.json()).csrfToken;
   const token = await request(appUrl + "/api/tokens", {
     body: JSON.stringify({ name: "Phase 6 smoke" }),
     headers: {
-      cookie: requiredHeader(completed, "set-cookie").split(";", 1)[0],
+      cookie,
       "content-type": "application/json",
       origin: appWebUrl,
+      "x-html-share-csrf": csrfToken,
     },
     method: "POST",
   });

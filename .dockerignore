@@ -6,12 +6,18 @@ build
 **/build
 coverage
 **/coverage
+test-results
+**/test-results
+playwright-report
+**/playwright-report
 dist
 **/dist
 node_modules
 **/node_modules
 out
 **/out
+release
+**/release
 
 .env
 .env.*
@@ -45,3 +51,8 @@ postgres-data
 **/.tmp
 tmp
 **/tmp
+
+# Local-only release controls. Public browser values are passed explicitly as
+# build args; the control file and packaging script do not belong in images.
+1panel-build.local
+scripts/build-1panel-images.sh

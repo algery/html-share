@@ -1,3 +1,4 @@
+import { inspectDistribution } from "./distribution-safety.mjs";
 import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -30,6 +31,7 @@ async function buildOne(staging, target, archiveName) {
     filter: (path) => !path.startsWith(ignoredDirectory) && !path.endsWith(".DS_Store"),
     recursive: true,
   });
+  await inspectDistribution(root);
   const archivePath = join(output, archiveName);
   await rm(archivePath, { force: true });
   await execute("zip", ["-qrX", archivePath, target], { cwd: staging });

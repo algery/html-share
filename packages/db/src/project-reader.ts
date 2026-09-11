@@ -4,6 +4,45 @@ import { DemoProjectStatus, RevisionStatus, type PrismaClient } from "./generate
 
 export function createProjectReader(prisma: PrismaClient): ProjectReader & ProjectManagementReader {
   return {
+    async findOwnedActiveProject(input) {
+      const project = await prisma.demoProject.findFirst({
+        select: {
+          accessMode: true,
+          createdAt: true,
+          displayName: true,
+          fileCount: true,
+          projectKey: true,
+          totalSize: true,
+          updatedAt: true,
+          currentRevision: {
+            select: {
+              files: {
+                orderBy: { relativePath: "asc" },
+                select: { relativePath: true, size: true },
+              },
+            },
+          },
+        },
+        where: {
+          ownerUserId: input.ownerUserId,
+          projectKey: input.projectKey,
+          status: DemoProjectStatus.ACTIVE,
+          currentRevision: { is: { status: RevisionStatus.ACTIVE } },
+        },
+      });
+      if (project?.currentRevision === null || project === null) return null;
+      const { currentRevision, ...summary } = project;
+      return {
+        ...summary,
+        accessMode: summary.accessMode === "password" ? "password" : "organization",
+        totalSize: Number(summary.totalSize),
+        files: currentRevision.files.map((file) => ({
+          relativePath: file.relativePath,
+          size: Number(file.size),
+        })),
+      };
+    },
+
     async findCurrentFile(input) {
       const project = await prisma.demoProject.findFirst({
         include: {
@@ -42,6 +81,7 @@ export function createProjectReader(prisma: PrismaClient): ProjectReader & Proje
       const projects = await prisma.demoProject.findMany({
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
         select: {
+          accessMode: true,
           createdAt: true,
           displayName: true,
           fileCount: true,
@@ -57,6 +97,7 @@ export function createProjectReader(prisma: PrismaClient): ProjectReader & Proje
       return {
         projects: projects.map((project) => ({
           ...project,
+          accessMode: project.accessMode === "password" ? "password" : "organization",
           totalSize: Number(project.totalSize),
         })),
         quota: {

@@ -1,127 +1,131 @@
-import { Readable } from "node:stream";
 import { createHash } from "node:crypto";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
-import type { ProcessingUpload, StoredFile } from "@html-share/db";
+import { digestManifest } from "@html-share/core";
+import type { ProcessingUpload } from "@html-share/db";
 import type { ObjectStore } from "@html-share/storage";
 
-import {
-  cleanupUploadArtifacts,
-  finalizeNextUpload,
-  type UploadFinalizerRepository,
-} from "./finalize-upload.js";
+import { finalizeNextUpload, type UploadFinalizerRepository } from "./finalize-upload.js";
 
 describe("finalizeNextUpload", () => {
-  it("rejects an object whose actual ZIP size differs before downloading it", async () => {
-    const repository = new FakeRepository(createTask({ declaredArchiveSize: 10 }));
-    const storage = new FakeStorage({ archive: buildZip("index.html", "demo"), headSize: 11 });
+  it("has no body-read, archive, extraction, or local temporary-file code path", async () => {
+    const source = await readFile(new URL("./finalize-upload.ts", import.meta.url), "utf8");
+    expect(source).not.toMatch(/\.getObject\(|\.putObject\(|node:fs|node:os|yauzl|unzip|mkdtemp/);
+  });
+
+  it("creates no runtime temporary files on success, failure, or asynchronous timeout", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "html-share-finalizer-no-temp-"));
+    const previousTmpdir = process.env["TMPDIR"];
+    process.env["TMPDIR"] = directory;
+    try {
+      for (const failure of [undefined, "missing", "timeout"] as const) {
+        const task = createTask();
+        await finalizeNextUpload({
+          headObjectTimeoutMs: 10,
+          repository: new FakeRepository(task),
+          storage: new FakeStorage(task, failure),
+        });
+      }
+      expect(await readdir(directory)).toEqual([]);
+    } finally {
+      if (previousTmpdir === undefined) delete process.env["TMPDIR"];
+      else process.env["TMPDIR"] = previousTmpdir;
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("publishes only after every exact object passes HeadObject verification", async () => {
+    const task = createTask();
+    const repository = new FakeRepository(task);
+    const storage = new FakeStorage(task);
+
+    await expect(finalizeNextUpload({ repository, storage })).resolves.toBe("published");
+
+    expect(storage.headKeys).toEqual(task.files.map((file) => file.storageKey));
+    expect(storage.getCalls).toBe(0);
+    expect(repository.verified).toBe(true);
+    expect(repository.published).toBe(true);
+    expect(repository.currentRevisionId).toBe("new-revision");
+  });
+
+  it.each([
+    ["missing", "UPLOAD_OBJECT_MISSING"],
+    ["size", "UPLOAD_OBJECT_SIZE_MISMATCH"],
+    ["type", "UPLOAD_OBJECT_CONTENT_TYPE_MISMATCH"],
+    ["md5", "UPLOAD_OBJECT_CONTENT_MD5_MISMATCH"],
+    ["timeout", "UPLOAD_OBJECT_HEAD_TIMEOUT"],
+  ] as const)(
+    "fails on %s without reading a body or exposing a partial revision",
+    async (failure, code) => {
+      const task = createTask();
+      const repository = new FakeRepository(task);
+      const storage = new FakeStorage(task, failure);
+
+      await expect(
+        finalizeNextUpload({ headObjectTimeoutMs: 10, repository, storage }),
+      ).resolves.toBe("failed");
+
+      expect(storage.getCalls).toBe(0);
+      expect(storage.deletedBatches).toEqual([]);
+      expect(repository.failed).toBe(code);
+      expect(repository.published).toBe(false);
+      expect(repository.currentRevisionId).toBe("old-revision");
+    },
+  );
+
+  it("rejects declaration, target, and manifest drift before any object call", async () => {
+    const base = createTask();
+    const cases: [ProcessingUpload, string][] = [
+      [{ ...base, declaredFileCount: 3 }, "UPLOAD_DECLARATION_MISMATCH"],
+      [{ ...base, targetHtml: "missing.html" }, "TARGET_HTML_MISSING"],
+      [{ ...base, manifestDigest: "0".repeat(64) }, "UPLOAD_MANIFEST_MISMATCH"],
+    ];
+    for (const [task, code] of cases) {
+      const repository = new FakeRepository(task);
+      const storage = new FakeStorage(task);
+      await expect(finalizeNextUpload({ repository, storage })).resolves.toBe("failed");
+      expect(storage.getCalls).toBe(0);
+      expect(storage.headKeys).toEqual([]);
+      expect(repository.failed).toBe(code);
+      expect(repository.currentRevisionId).toBe("old-revision");
+    }
+  });
+
+  it("keeps the old revision when the atomic publish precondition fails", async () => {
+    const task = createTask();
+    const repository = new FakeRepository(task, false);
+    const storage = new FakeStorage(task);
 
     await expect(finalizeNextUpload({ repository, storage })).resolves.toBe("failed");
 
     expect(storage.getCalls).toBe(0);
-    expect(repository.failed).toBe("ARCHIVE_UPLOAD_SIZE_MISMATCH");
-    expect(repository.published).toBe(false);
-  });
-
-  it("keeps the current revision untouched when manifest verification fails", async () => {
-    const archive = buildZip("index.html", "new demo");
-    const repository = new FakeRepository(
-      createTask({ declaredArchiveSize: archive.length, manifestDigest: "0".repeat(64) }),
-    );
-    const storage = new FakeStorage({ archive, headSize: archive.length });
-
-    await expect(finalizeNextUpload({ repository, storage })).resolves.toBe("failed");
-
-    expect(repository.published).toBe(false);
-    expect(repository.currentRevisionId).toBe("old-revision");
-    expect(repository.stagedKeys).toEqual(["projects/abc12/revisions/2/index.html"]);
-    expect(repository.failed).toBe("ARCHIVE_MANIFEST_MISMATCH");
-  });
-
-  it("publishes only after every object write and manifest verification succeeds", async () => {
-    const source = "new demo";
-    const archive = buildZip("index.html", source);
-    const hash = createHash("sha256").update(source).digest("hex");
-    const manifestDigest = createHash("sha256")
-      .update(`index.html\u0000${Buffer.byteLength(source)}\u0000${hash}\n`)
-      .digest("hex");
-    const repository = new FakeRepository(
-      createTask({ declaredArchiveSize: archive.length, manifestDigest }),
-    );
-    const storage = new FakeStorage({ archive, headSize: archive.length });
-
-    await expect(finalizeNextUpload({ repository, storage })).resolves.toBe("published");
-
-    expect(repository.published).toBe(true);
-    expect(repository.currentRevisionId).toBe("new-revision");
-    expect(repository.stagedKeys).toEqual(["projects/abc12/revisions/2/index.html"]);
-  });
-
-  it("retains the active revision when temporary ZIP cleanup fails after publication", async () => {
-    const source = "new demo";
-    const archive = buildZip("index.html", source);
-    const repository = new FakeRepository(
-      createTask({ declaredArchiveSize: archive.length, manifestDigest: manifestFor(source) }),
-    );
-    const storage = new FakeStorage({ archive, failDelete: true, headSize: archive.length });
-
-    await expect(finalizeNextUpload({ repository, storage })).resolves.toBe("published");
-
-    expect(repository.currentRevisionId).toBe("new-revision");
-    expect(repository.failed).toBeNull();
-  });
-
-  it("rejects a missing target HTML without switching the current revision", async () => {
-    const source = "new demo";
-    const archive = buildZip("index.html", source);
-    const repository = new FakeRepository(
-      createTask({
-        declaredArchiveSize: archive.length,
-        manifestDigest: manifestFor(source),
-        targetHtml: "missing.html",
-      }),
-    );
-    const storage = new FakeStorage({ archive, headSize: archive.length });
-
-    await expect(finalizeNextUpload({ repository, storage })).resolves.toBe("failed");
-
-    expect(repository.currentRevisionId).toBe("old-revision");
-    expect(repository.failed).toBe("TARGET_HTML_MISSING");
-  });
-
-  it("reports failure when the database did not atomically activate the revision", async () => {
-    const source = "new demo";
-    const archive = buildZip("index.html", source);
-    const repository = new FakeRepository(
-      createTask({ declaredArchiveSize: archive.length, manifestDigest: manifestFor(source) }),
-      false,
-    );
-    const storage = new FakeStorage({ archive, headSize: archive.length });
-
-    await expect(finalizeNextUpload({ repository, storage })).resolves.toBe("failed");
-
-    expect(repository.currentRevisionId).toBe("old-revision");
     expect(repository.failed).toBe("PUBLISH_NOT_APPLIED");
+    expect(repository.currentRevisionId).toBe("old-revision");
   });
 
-  it("deletes cleanup objects in S3-compatible batches before marking tasks cleaned", async () => {
-    const keys = Array.from({ length: 1001 }, (_, index) => `temporary/uploads/${index}.zip`);
-    const repository = new FakeRepository(null, true, keys);
-    const storage = new FakeStorage({ archive: Buffer.alloc(0), headSize: 0 });
+  it("leaves all failed-task deletion to the post-expiry cleanup owner", async () => {
+    const task = createTask();
+    const repository = new FakeRepository(task);
+    const storage = new FakeStorage(task, "missing");
 
-    await expect(cleanupUploadArtifacts({ repository, storage })).resolves.toBe(1001);
+    await finalizeNextUpload({ repository, storage });
 
-    expect(storage.deletedBatches.map((batch) => batch.length)).toEqual([1000, 1]);
-    expect(repository.cleanedObjectKeys).toEqual(keys);
+    expect(storage.deletedBatches).toEqual([]);
   });
 
-  it("does not mark cleanup complete when any object-store batch fails", async () => {
-    const repository = new FakeRepository(null, true, ["temporary/uploads/failed.zip"]);
-    const storage = new FakeStorage({ archive: Buffer.alloc(0), failDelete: true, headSize: 0 });
-
-    await expect(cleanupUploadArtifacts({ repository, storage })).rejects.toThrow("delete failed");
-
-    expect(repository.cleanedObjectKeys).toEqual([]);
+  it("reports the persisted trace for both final outcomes", async () => {
+    const task = createTask({ traceId: "trace-upload-chain" });
+    const outcomes: { status: "published" | "failed"; traceId?: string }[] = [];
+    await finalizeNextUpload({
+      onOutcome: (outcome) => outcomes.push(outcome),
+      repository: new FakeRepository(task),
+      storage: new FakeStorage(task),
+    });
+    expect(outcomes).toEqual([{ status: "published", traceId: "trace-upload-chain" }]);
   });
 });
 
@@ -129,13 +133,11 @@ class FakeRepository implements UploadFinalizerRepository {
   currentRevisionId = "old-revision";
   failed: string | null = null;
   published = false;
-  stagedKeys: string[] = [];
-  cleanedObjectKeys: string[] = [];
+  verified = false;
 
   constructor(
     private task: ProcessingUpload | null,
     private readonly publishResult = true,
-    private readonly cleanupKeys: string[] = [],
   ) {}
 
   async claimNextProcessingUpload() {
@@ -146,52 +148,39 @@ class FakeRepository implements UploadFinalizerRepository {
 
   async failUpload(input: { failureCode: string }) {
     this.failed = input.failureCode;
+    return true;
   }
 
-  async listCleanupObjectKeys() {
-    return this.cleanupKeys;
+  async markUploadFilesVerified() {
+    this.verified = true;
   }
 
-  async publishUpload(input: {
-    uploadId: string;
-    files: readonly StoredFile[];
-    totalSize: number;
-    now: Date;
-  }) {
-    expect(input.files).toHaveLength(1);
+  async publishUpload() {
     if (!this.publishResult) return false;
     this.published = true;
     this.currentRevisionId = "new-revision";
     return true;
   }
-
-  async recordStagedObjectKey(input: { storageKey: string }) {
-    this.stagedKeys.push(input.storageKey);
-  }
-
-  async markTemporaryObjectsCleaned(input: { objectKeys: readonly string[] }) {
-    this.cleanedObjectKeys.push(...input.objectKeys);
-    return undefined;
-  }
 }
+
+type Failure = "md5" | "missing" | "size" | "timeout" | "type";
 
 class FakeStorage implements ObjectStore {
   getCalls = 0;
+  headKeys: string[] = [];
   deletedBatches: string[][] = [];
-  private readonly written = new Map<string, Buffer>();
 
   constructor(
-    private readonly input: { archive: Buffer; headSize: number; failDelete?: boolean },
+    private readonly task: ProcessingUpload | null,
+    private readonly failure?: Failure,
   ) {}
 
-  async createPresignedZipUpload() {
+  async createPresignedUpload() {
     return { headers: {}, url: "https://storage.test/upload" };
   }
 
   async deleteObjects(keys: readonly string[]) {
     this.deletedBatches.push([...keys]);
-    if (this.input.failDelete) throw new Error("delete failed");
-    return undefined;
   }
 
   async ensurePrivateBucket() {
@@ -200,40 +189,56 @@ class FakeStorage implements ObjectStore {
 
   async getObject() {
     this.getCalls += 1;
-    return Readable.from([this.input.archive]);
+    return Readable.from([]);
   }
 
-  async headObject() {
-    return { size: this.input.headSize };
+  async headObject(key: string, options?: { abortSignal?: AbortSignal }) {
+    this.headKeys.push(key);
+    if (this.failure === "timeout") {
+      await new Promise<never>((_resolve, reject) => {
+        options?.abortSignal?.addEventListener(
+          "abort",
+          () => reject(new Error("head request aborted")),
+          { once: true },
+        );
+      });
+    }
+    if (this.failure === "missing") return null;
+    const file = this.task?.files.find((candidate) => candidate.storageKey === key);
+    if (file === undefined) return null;
+    return {
+      contentMd5: this.failure === "md5" ? "AAAAAAAAAAAAAAAAAAAAAA==" : file.contentMd5,
+      contentType: this.failure === "type" ? "text/plain" : file.mimeType,
+      size: this.failure === "size" ? file.size + 1 : file.size,
+    };
   }
 
-  async putObject(input: { body: Readable; key: string }) {
-    const chunks: Buffer[] = [];
-    for await (const chunk of input.body) chunks.push(Buffer.from(chunk));
-    this.written.set(input.key, Buffer.concat(chunks));
+  async listObjects() {
+    return { keys: [] };
   }
 }
 
-function manifestFor(source: string) {
-  const hash = createHash("sha256").update(source).digest("hex");
-  return createHash("sha256")
-    .update(`index.html\u0000${Buffer.byteLength(source)}\u0000${hash}\n`)
-    .digest("hex");
-}
-
-function createTask(overrides: Partial<ProcessingUpload>): ProcessingUpload {
+function createTask(overrides: Partial<ProcessingUpload> = {}): ProcessingUpload {
+  const files = [file("index.html", "new demo"), file("style.css", "body{}")];
   return {
     action: "replace",
-    declaredArchiveSize: 1,
-    declaredFileCount: 1,
-    declaredTotalSize: 8,
-    manifestDigest: "a".repeat(64),
+    declaredFileCount: files.length,
+    declaredTotalSize: files.reduce((sum, current) => sum + current.size, 0),
+    files,
+    manifestDigest: digestManifest(
+      files.map((current) => ({
+        contentMd5: current.contentMd5,
+        mimeType: current.mimeType,
+        relativePath: current.path,
+        sha256: current.contentHash,
+        size: current.size,
+      })),
+    ),
     ownerUserId: "owner",
     projectId: "project",
     projectKey: "abc12",
     revisionId: "revision",
     revisionNumber: 2,
-    temporaryObjectKey: "temporary/uploads/task.zip",
     targetHtml: "index.html",
     tenantId: "tenant",
     uploadId: "upload",
@@ -241,40 +246,16 @@ function createTask(overrides: Partial<ProcessingUpload>): ProcessingUpload {
   };
 }
 
-function buildZip(name: string, contents: string) {
-  const filename = Buffer.from(name);
+function file(path: string, contents: string) {
   const source = Buffer.from(contents);
-  const crc = crc32(source);
-  const local = Buffer.alloc(30);
-  local.writeUInt32LE(0x04034b50, 0);
-  local.writeUInt16LE(20, 4);
-  local.writeUInt32LE(crc, 14);
-  local.writeUInt32LE(source.length, 18);
-  local.writeUInt32LE(source.length, 22);
-  local.writeUInt16LE(filename.length, 26);
-  const central = Buffer.alloc(46);
-  central.writeUInt32LE(0x02014b50, 0);
-  central.writeUInt16LE(0x0314, 4);
-  central.writeUInt16LE(20, 6);
-  central.writeUInt32LE(crc, 16);
-  central.writeUInt32LE(source.length, 20);
-  central.writeUInt32LE(source.length, 24);
-  central.writeUInt16LE(filename.length, 28);
-  central.writeUInt32LE(0o100644 * 0x1_0000, 38);
-  const footer = Buffer.alloc(22);
-  footer.writeUInt32LE(0x06054b50, 0);
-  footer.writeUInt16LE(1, 8);
-  footer.writeUInt16LE(1, 10);
-  footer.writeUInt32LE(central.length + filename.length, 12);
-  footer.writeUInt32LE(local.length + filename.length + source.length, 16);
-  return Buffer.concat([local, filename, source, central, filename, footer]);
-}
-
-function crc32(buffer: Buffer) {
-  let value = 0xffffffff;
-  for (const byte of buffer) {
-    value ^= byte;
-    for (let bit = 0; bit < 8; bit += 1) value = (value >>> 1) ^ (value & 1 ? 0xedb88320 : 0);
-  }
-  return (value ^ 0xffffffff) >>> 0;
+  const mimeType = path.endsWith(".css") ? "text/css; charset=utf-8" : "text/html; charset=utf-8";
+  return {
+    contentHash: createHash("sha256").update(source).digest("hex"),
+    contentMd5: createHash("md5").update(source).digest("base64"),
+    id: `file-${path}`,
+    mimeType,
+    path,
+    size: source.length,
+    storageKey: `projects/abc12/revisions/2/${path}`,
+  };
 }

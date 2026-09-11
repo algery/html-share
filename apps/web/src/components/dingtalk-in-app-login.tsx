@@ -2,7 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-import { completeDingTalkInAppLogin, readDingTalkBridge } from "../lib/dingtalk-in-app";
+import {
+  completeDingTalkInAppLogin,
+  readDingTalkBridge,
+  type DingTalkInAppDiagnostic,
+} from "../lib/dingtalk-in-app";
 
 interface DingTalkInAppLoginProps {
   apiUrl: string;
@@ -21,7 +25,13 @@ export function DingTalkInAppLogin({
 
   useEffect(() => {
     const bridge = readDingTalkBridge(window.dd);
-    if (bridge === null) return;
+    if (bridge === null) {
+      printDiagnostic({
+        outcome: "failed",
+        stage: "auth_code_request",
+      });
+      return;
+    }
 
     void Promise.resolve()
       .then(() => {
@@ -32,6 +42,7 @@ export function DingTalkInAppLogin({
           clientId,
           corpId,
           fetcher: (input, init) => fetch(input, { ...init, credentials: "include" }),
+          reportDiagnostic: printDiagnostic,
           returnPath,
         });
       })
@@ -48,4 +59,9 @@ export function DingTalkInAppLogin({
     return <p aria-live="polite">钉钉免登未完成，请使用下方授权入口重试。</p>;
   }
   return null;
+}
+
+function printDiagnostic(diagnostic: DingTalkInAppDiagnostic) {
+  // Deliberately log only fixed stage/result fields. Authorization codes and state never enter it.
+  console.info("[html-share:dingtalk-auth]", diagnostic);
 }

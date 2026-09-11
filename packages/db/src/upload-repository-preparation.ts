@@ -19,16 +19,34 @@ import {
 } from "./generated/prisma/client.js";
 import { expireUploadTasks } from "./upload-repository-maintenance.js";
 
+import {
+  assertSameUploadRequest,
+  generatePasswordCandidate,
+  pendingPasswordData,
+  type PasswordCrypto,
+} from "./password-upload-policy.js";
+
 type Transaction = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 type PrepareInput = Parameters<UploadRepository["prepare"]>[0];
 
-export async function prepareUpload(prisma: PrismaClient, input: PrepareInput) {
+export async function prepareUpload(
+  prisma: PrismaClient,
+  input: PrepareInput,
+  crypto?: PasswordCrypto,
+  managementCrypto?: PasswordCrypto,
+) {
+  // Expiry must commit before this request can acquire any project lock.
+  await prisma.$transaction((tx) => expireUploadTasks(tx, input.now));
+  const candidate = await generatePasswordCandidate(input, crypto);
   try {
     return await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.owner.id}))`;
-      await expireUploadTasks(tx, input.now);
       const existing = await tx.uploadTask.findFirst({
-        include: { project: { select: { projectKey: true } } },
+        include: {
+          project: { select: { projectKey: true } },
+          revision: { select: { revisionNumber: true } },
+          uploadFiles: true,
+        },
         orderBy: { createdAt: "desc" },
         where: {
           clientRequestId: input.clientRequestId,
@@ -36,6 +54,7 @@ export async function prepareUpload(prisma: PrismaClient, input: PrepareInput) {
           ownerUserId: input.owner.id,
         },
       });
+      if (existing !== null) assertSameUploadRequest(existing, input);
       if (existing?.status === UploadTaskStatus.COMPLETED)
         return toPrepared(existing, existing.project.projectKey, true, "completed");
       if (existing?.status === UploadTaskStatus.PROCESSING)
@@ -74,11 +93,13 @@ export async function prepareUpload(prisma: PrismaClient, input: PrepareInput) {
       const expiresAt = new Date(input.now.getTime() + UPLOAD_URL_TTL_MS);
       const uploadId = randomUUID();
       const task = await tx.uploadTask.create({
+        include: { revision: { select: { revisionNumber: true } }, uploadFiles: true },
         data: {
+          ...pendingPasswordData(project, input, uploadId, candidate, crypto, managementCrypto),
+          createdAt: input.now,
           action: input.action === "create" ? UploadAction.CREATE : UploadAction.REPLACE,
           clientRequestId: input.clientRequestId,
           declaredFileCount: input.fileCount,
-          declaredArchiveSize: BigInt(input.archiveSize),
           declaredTotalSize: BigInt(input.totalSize),
           displayName: input.displayName,
           expiresAt,
@@ -89,8 +110,20 @@ export async function prepareUpload(prisma: PrismaClient, input: PrepareInput) {
           revisionId: revision.id,
           riskAckDigest: input.riskAckDigest ?? null,
           targetHtml: input.targetHtml,
-          temporaryObjectKey: `temporary/uploads/${uploadId}.zip`,
           tenantId: project.tenantId,
+          traceId: input.traceId ?? null,
+          uploadFiles: {
+            create: input.files.map((file) => ({
+              expectedContentMd5: file.contentMd5,
+              expectedSha256: file.sha256,
+              expectedSize: BigInt(file.size),
+              mimeType: file.mimeType,
+              relativePath: file.relativePath,
+              revisionId: revision.id,
+              storageKey: revisionStorageKey(project.id, revision.id, file.relativePath),
+              tenantId: project.tenantId,
+            })),
+          },
         },
       });
       await tx.quotaReservation.create({
@@ -161,8 +194,22 @@ async function createReservedProject(
 }
 
 async function findOwnedProject(tx: Transaction, projectKey: string, ownerUserId: string) {
-  const project = await tx.demoProject.findUnique({ where: { projectKey } });
-  if (project === null || project.status === DemoProjectStatus.DELETED)
+  const projects = await tx.$queryRaw<LockedOwnedProject[]>`
+    SELECT
+      "id",
+      "tenant_id" AS "tenantId",
+      "owner_user_id" AS "ownerUserId",
+      "project_key" AS "projectKey",
+      "status",
+      "access_mode" AS "accessMode",
+      "password_hash" AS "passwordHash",
+      "password_version" AS "passwordVersion"
+    FROM "demo_projects"
+    WHERE "project_key" = ${projectKey}
+    FOR UPDATE
+  `;
+  const project = projects[0];
+  if (project === undefined || project.status === DemoProjectStatus.DELETED)
     throw new UploadError("PROJECT_NOT_FOUND");
   if (project.ownerUserId !== ownerUserId) throw new UploadError("PROJECT_FORBIDDEN");
   const active = await tx.uploadTask.findFirst({
@@ -175,21 +222,55 @@ async function findOwnedProject(tx: Transaction, projectKey: string, ownerUserId
   return project;
 }
 
+interface LockedOwnedProject {
+  accessMode: string;
+  passwordHash: string | null;
+  passwordVersion: number;
+  id: string;
+  ownerUserId: string;
+  projectKey: string;
+  status: DemoProjectStatus;
+  tenantId: string;
+}
+
 function toPrepared(
-  task: { id: string; expiresAt: Date; temporaryObjectKey: string; declaredArchiveSize: bigint },
+  task: {
+    id: string;
+    expiresAt: Date;
+    revision: { revisionNumber: number };
+    uploadFiles: readonly {
+      expectedContentMd5: string;
+      expectedSha256: string;
+      expectedSize: bigint;
+      mimeType: string;
+      relativePath: string;
+      storageKey: string;
+    }[];
+  },
   projectId: string,
   idempotent: boolean,
   status: PreparedUpload["status"],
 ): PreparedUpload {
   return {
-    archiveSize: Number(task.declaredArchiveSize),
     expiresAt: task.expiresAt,
+    files: task.uploadFiles.map((file) => ({
+      contentMd5: file.expectedContentMd5,
+      mimeType: file.mimeType,
+      relativePath: file.relativePath,
+      sha256: file.expectedSha256,
+      size: Number(file.expectedSize),
+      storageKey: file.storageKey,
+    })),
     idempotent,
     projectId,
+    revisionNumber: task.revision.revisionNumber,
     status,
-    temporaryObjectKey: task.temporaryObjectKey,
     uploadId: task.id,
   };
+}
+
+function revisionStorageKey(projectId: string, revisionId: string, relativePath: string) {
+  return `projects/${projectId}/revisions/${revisionId}/${relativePath}`;
 }
 
 function createProjectKey() {

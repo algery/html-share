@@ -14,6 +14,7 @@ import { createSimulatorDingTalkClient } from "@html-share/dingtalk";
 import type { ObjectStore } from "@html-share/storage";
 
 import { buildServerApp } from "./app.js";
+import { createAppSession, createDemoSession } from "./phase5-session.test-helper.js";
 
 const HTML = "<!doctype html><title>Phase 5</title><h1>authorized</h1>";
 const HASH = "a".repeat(64);
@@ -77,6 +78,28 @@ describe("Phase 5 Demo content gateway", () => {
     expect(response.body).toBe("");
     expect(response.headers.etag).toBe(`"${HASH}"`);
     expect(reads()).toBe(0);
+  });
+
+  it("limits authenticated content reads before opening private objects", async () => {
+    const { app, reads } = createApp({ contentSessionLimit: 1 });
+    applications.push(app);
+    const cookie = await createDemoSession(app);
+
+    const first = await app.inject({
+      method: "GET",
+      url: "/abc12/a.html",
+      headers: { cookie, host: "demo.localhost" },
+    });
+    const limited = await app.inject({
+      method: "GET",
+      url: "/abc12/a.html",
+      headers: { cookie, host: "demo.localhost" },
+    });
+
+    expect(first.statusCode).toBe(200);
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers["retry-after"]).toBe("60");
+    expect(reads()).toBe(1);
   });
 
   it("does not leak a known file ETag when its private object is unavailable", async () => {
@@ -169,7 +192,7 @@ describe("Phase 5 Demo content gateway", () => {
   });
 });
 
-function createApp(options?: { objectExists?: boolean }) {
+function createApp(options?: { contentSessionLimit?: number; objectExists?: boolean }) {
   let reads = 0;
   const projects: ProjectReader = {
     async findCurrentFile({ projectKey, relativePath, tenantId }) {
@@ -179,7 +202,7 @@ function createApp(options?: { objectExists?: boolean }) {
     },
   };
   const storage: ObjectStore = {
-    async createPresignedZipUpload() {
+    async createPresignedUpload() {
       throw new Error("not used");
     },
     async deleteObjects() {
@@ -194,10 +217,16 @@ function createApp(options?: { objectExists?: boolean }) {
       return Readable.from([HTML]);
     },
     async headObject() {
-      return options?.objectExists === false ? null : { size: FILE.size };
+      return options?.objectExists === false
+        ? null
+        : {
+            contentMd5: "AAAAAAAAAAAAAAAAAAAAAA==",
+            contentType: "text/html; charset=utf-8",
+            size: FILE.size,
+          };
     },
-    async putObject() {
-      return undefined;
+    async listObjects() {
+      return { keys: [] };
     },
   };
   return {
@@ -221,48 +250,21 @@ function createApp(options?: { objectExists?: boolean }) {
         hashSecret: "phase-five-mcp-token-hash-secret-with-enough-length",
         repository: new InMemoryMcpTokenRepository(),
       }),
+      ...(options?.contentSessionLimit === undefined
+        ? {}
+        : {
+            rateLimits: {
+              authPerMinute: 30,
+              contentIpPerMinute: 1200,
+              contentSessionPerMinute: options.contentSessionLimit,
+              mcpPerMinute: 60,
+              mcpUploadCompletePerMinute: 10,
+              mcpUploadPreparePerMinute: 10,
+            },
+          }),
       projects,
       storage,
     }),
     reads: () => reads,
   };
-}
-
-async function createDemoSession(app: FastifyInstance) {
-  const started = await app.inject({
-    method: "POST",
-    url: "/auth/internal/start",
-    headers: { host: "demo.localhost" },
-    payload: { returnPath: "/abc12/a.html" },
-  });
-  const completed = await app.inject({
-    method: "POST",
-    url: "/auth/internal/complete",
-    headers: { host: "demo.localhost" },
-    payload: { code: "simulator-member", state: started.json<{ state: string }>().state },
-  });
-  return readCookie(completed);
-}
-
-async function createAppSession(app: FastifyInstance) {
-  const started = await app.inject({
-    method: "POST",
-    url: "/auth/internal/start",
-    headers: { host: "app.localhost" },
-    payload: { returnPath: "/" },
-  });
-  const completed = await app.inject({
-    method: "POST",
-    url: "/auth/internal/complete",
-    headers: { host: "app.localhost" },
-    payload: { code: "simulator-member", state: started.json<{ state: string }>().state },
-  });
-  return readCookie(completed);
-}
-
-function readCookie(response: { headers: Record<string, unknown> }) {
-  const header = response.headers["set-cookie"];
-  const value = Array.isArray(header) ? header[0] : header;
-  if (typeof value !== "string") throw new Error("session cookie missing");
-  return value.split(";", 1)[0] ?? "";
 }

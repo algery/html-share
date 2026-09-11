@@ -1,4 +1,4 @@
-import { posix } from "node:path";
+import { normalizeRelativePath } from "@html-share/core";
 
 export interface DemoContentPath {
   projectKey: string;
@@ -36,7 +36,11 @@ export function resolveDemoContentPath(requestUrl: string): DemoContentPath | nu
   ) {
     return null;
   }
-  const relativePath = segments.join("/");
-  if (posix.normalize(relativePath) !== relativePath || relativePath.startsWith("../")) return null;
+  let relativePath: string;
+  try {
+    relativePath = normalizeRelativePath(segments.join("/"));
+  } catch {
+    return null;
+  }
   return { projectKey, relativePath };
 }

@@ -21,6 +21,7 @@ describe("Phase 7 management APIs", () => {
 
   it("returns only the current owner's active projects and matching quota", async () => {
     const projects: ProjectManagementReader = {
+      findOwnedActiveProject: vi.fn().mockResolvedValue(null),
       listOwnedActiveProjects: vi.fn().mockResolvedValue({
         projects: [
           {

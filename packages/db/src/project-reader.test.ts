@@ -4,6 +4,67 @@ import type { PrismaClient } from "./generated/prisma/client.js";
 import { createProjectReader } from "./project-reader.js";
 
 describe("project reader", () => {
+  it("reads all current files in path order for an active project owned by the caller", async () => {
+    const findFirst = vi.fn().mockResolvedValue({
+      createdAt: new Date("2026-09-07T00:00:00Z"),
+      updatedAt: new Date("2026-09-07T00:00:00Z"),
+      displayName: "Demo",
+      fileCount: 2,
+      projectKey: "abc12",
+      totalSize: 15n,
+      currentRevision: {
+        files: [
+          { relativePath: "assets/a.js", size: 12n },
+          { relativePath: "index.html", size: 3n },
+        ],
+      },
+    });
+    const reader = createProjectReader({ demoProject: { findFirst } } as unknown as PrismaClient);
+    const result = await reader.findOwnedActiveProject({
+      ownerUserId: "owner-1",
+      projectKey: "abc12",
+    });
+    expect(result).toMatchObject({
+      totalSize: 15,
+      files: [
+        { relativePath: "assets/a.js", size: 12 },
+        { relativePath: "index.html", size: 3 },
+      ],
+    });
+    expect(result).not.toHaveProperty("currentRevision");
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          ownerUserId: "owner-1",
+          projectKey: "abc12",
+          status: "ACTIVE",
+          currentRevision: { is: { status: "ACTIVE" } },
+        },
+        select: expect.objectContaining({
+          currentRevision: {
+            select: {
+              files: {
+                orderBy: { relativePath: "asc" },
+                select: { relativePath: true, size: true },
+              },
+            },
+          },
+        }),
+      }),
+    );
+  });
+
+  it("returns no detail when there is no owned active project or no published revision", async () => {
+    const findFirst = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ currentRevision: null });
+    const reader = createProjectReader({ demoProject: { findFirst } } as unknown as PrismaClient);
+    const input = { ownerUserId: "owner-1", projectKey: "abc12" };
+    await expect(reader.findOwnedActiveProject(input)).resolves.toBeNull();
+    await expect(reader.findOwnedActiveProject(input)).resolves.toBeNull();
+  });
+
   it("only exposes an exact file from an ACTIVE current revision", async () => {
     const findFirst = vi.fn().mockResolvedValue({
       currentRevision: {

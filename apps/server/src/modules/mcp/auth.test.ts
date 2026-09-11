@@ -51,4 +51,16 @@ describe("MCP authentication helpers", () => {
     expect(limiter.consumePrepare("user-2").allowed).toBe(true);
     expect(limiter.consumeComplete("upload-2").allowed).toBe(true);
   });
+
+  it("accepts deployment-specific limit values", () => {
+    const mcp = createMcpRateLimiter({ maximum: 1 });
+    const upload = createUploadToolRateLimiter({ completeMaximum: 1, prepareMaximum: 1 });
+
+    expect(mcp.consume({ ip: "127.0.0.1", token: TOKEN }).allowed).toBe(true);
+    expect(mcp.consume({ ip: "127.0.0.1", token: TOKEN }).allowed).toBe(false);
+    expect(upload.consumePrepare("user-1").allowed).toBe(true);
+    expect(upload.consumePrepare("user-1").allowed).toBe(false);
+    expect(upload.consumeComplete("upload-1").allowed).toBe(true);
+    expect(upload.consumeComplete("upload-1").allowed).toBe(false);
+  });
 });

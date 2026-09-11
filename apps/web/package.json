@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "node ../../scripts/run-with-example-env.mjs ./node_modules/next/dist/bin/next dev",
+    "dev:dingtalk": "node ../../scripts/run-with-example-env.mjs --environment-file=../.env.dingtalk.local ./node_modules/next/dist/bin/next dev",
     "build": "node ../../scripts/run-with-example-env.mjs ./node_modules/next/dist/bin/next build --webpack",
     "start": "node .next/standalone/apps/web/server.js",
     "typecheck": "tsc --noEmit",

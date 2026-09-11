@@ -11,6 +11,7 @@ const IGNORED_DIRECTORIES = new Set([
   "dist",
   "node_modules",
   "postgres-data",
+  "release",
   "minio-data",
 ]);
 const FORBIDDEN_EXTENSIONS = new Set([".key", ".p12", ".pfx", ".pem"]);
@@ -52,7 +53,16 @@ export function inspectContent(content) {
   }
   for (const match of content.matchAll(SENSITIVE_ASSIGNMENT)) {
     const value = match[2]?.replace(/^['"]|['"]$/g, "") ?? "";
-    if (!SAFE_EXAMPLE_VALUES.test(value)) {
+    const isSyntheticPasswordKey =
+      (match[1] === "PASSWORD_RESULT_ENCRYPTION_KEY" &&
+        value === Buffer.alloc(32, 1).toString("base64")) ||
+      (match[1] === "PASSWORD_MANAGEMENT_ENCRYPTION_KEY" &&
+        value === Buffer.alloc(32, 2).toString("base64"));
+    const isPasswordRateLimit =
+      /^PASSWORD_VERIFY_(?:IP|IP_PROJECT|PROJECT)_RATE_LIMIT_PER_MINUTE$/.test(match[1]) &&
+      /^[1-9][0-9]{0,5}$/.test(value) &&
+      Number(value) <= 100_000;
+    if (!SAFE_EXAMPLE_VALUES.test(value) && !isSyntheticPasswordKey && !isPasswordRateLimit) {
       findings.push(`non-placeholder-${match[1]}`);
     }
   }

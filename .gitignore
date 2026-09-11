@@ -7,8 +7,12 @@ pnpm-debug.log*
 .next/
 build/
 coverage/
+test-results/
+playwright-report/
 dist/
 out/
+release/
+/1panel-build.local
 *.tsbuildinfo
 packages/db/src/generated/
 

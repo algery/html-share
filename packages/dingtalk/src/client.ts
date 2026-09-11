@@ -1,16 +1,49 @@
 import type { DingTalkIdentity } from "@html-share/core";
 
 export class DingTalkAuthorizationError extends Error {
-  constructor(readonly code: "AUTHORIZATION_DENIED" | "PROVIDER_UNAVAILABLE") {
+  constructor(
+    readonly code: "AUTHORIZATION_DENIED" | "PROVIDER_UNAVAILABLE",
+    readonly details?: DingTalkAuthorizationErrorDetails,
+  ) {
     super(code);
     this.name = "DingTalkAuthorizationError";
   }
 }
 
+export type DingTalkAuthorizationStage =
+  "identity_lookup" | "simulator_identity" | "token_exchange";
+
+export type DingTalkAuthorizationFailureReason =
+  "invalid_response" | "network_error" | "provider_rejected";
+
+export interface DingTalkAuthorizationDiagnostic {
+  durationMs?: number;
+  failureReason?: DingTalkAuthorizationFailureReason;
+  httpStatus?: number;
+  outcome: "failed" | "started" | "succeeded";
+  stage: DingTalkAuthorizationStage;
+}
+
+export interface DingTalkAuthorizationErrorDetails {
+  failureReason: DingTalkAuthorizationFailureReason;
+  httpStatus?: number;
+  stage: DingTalkAuthorizationStage;
+}
+
+export type DingTalkAuthorizationDiagnosticReporter = (
+  diagnostic: DingTalkAuthorizationDiagnostic,
+) => void;
+
 export interface DingTalkAuthorizationClient {
   createExternalAuthorizationUrl(input: { callbackUrl: string; state: string }): string;
-  exchangeExternalAuthorizationCode(code: string): Promise<DingTalkIdentity>;
-  exchangeInternalAuthorizationCode(code: string): Promise<DingTalkIdentity>;
+  exchangeExternalAuthorizationCode(
+    code: string,
+    reportDiagnostic?: DingTalkAuthorizationDiagnosticReporter,
+  ): Promise<DingTalkIdentity>;
+  exchangeInternalAuthorizationCode(
+    code: string,
+    reportDiagnostic?: DingTalkAuthorizationDiagnosticReporter,
+  ): Promise<DingTalkIdentity>;
 }
 
 export interface LiveDingTalkClientOptions {
@@ -20,6 +53,8 @@ export interface LiveDingTalkClientOptions {
   externalAuthorizeUrl: string;
 }
 
+const IDENTITY_AUTHORIZATION_SCOPE = "openid Contact.User.Read";
+
 export function createSimulatorDingTalkClient(): DingTalkAuthorizationClient {
   return {
     createExternalAuthorizationUrl({ callbackUrl, state }) {
@@ -28,11 +63,11 @@ export function createSimulatorDingTalkClient(): DingTalkAuthorizationClient {
       callback.searchParams.set("state", state);
       return callback.toString();
     },
-    exchangeExternalAuthorizationCode(code) {
-      return resolveSimulatorIdentity(code);
+    exchangeExternalAuthorizationCode(code, reportDiagnostic) {
+      return resolveSimulatorIdentity(code, reportDiagnostic);
     },
-    exchangeInternalAuthorizationCode(code) {
-      return resolveSimulatorIdentity(code);
+    exchangeInternalAuthorizationCode(code, reportDiagnostic) {
+      return resolveSimulatorIdentity(code, reportDiagnostic);
     },
   };
 }
@@ -46,74 +81,158 @@ export function createLiveDingTalkClient(
       authorizationUrl.searchParams.set("client_id", options.clientId);
       authorizationUrl.searchParams.set("redirect_uri", callbackUrl);
       authorizationUrl.searchParams.set("response_type", "code");
-      authorizationUrl.searchParams.set("scope", "openid");
+      authorizationUrl.searchParams.set("scope", IDENTITY_AUTHORIZATION_SCOPE);
+      authorizationUrl.searchParams.set("prompt", "consent");
       authorizationUrl.searchParams.set("state", state);
       return authorizationUrl.toString();
     },
-    exchangeExternalAuthorizationCode(code) {
-      return exchangeCodeForIdentity(options, code);
+    exchangeExternalAuthorizationCode(code, reportDiagnostic) {
+      return exchangeCodeForIdentity(options, code, reportDiagnostic);
     },
-    exchangeInternalAuthorizationCode(code) {
-      return exchangeCodeForIdentity(options, code);
+    exchangeInternalAuthorizationCode(code, reportDiagnostic) {
+      return exchangeCodeForIdentity(options, code, reportDiagnostic);
     },
   };
 }
 
-async function resolveSimulatorIdentity(code: string): Promise<DingTalkIdentity> {
+async function resolveSimulatorIdentity(
+  code: string,
+  reportDiagnostic?: DingTalkAuthorizationDiagnosticReporter,
+): Promise<DingTalkIdentity> {
+  const startedAt = performance.now();
+  reportSafely(reportDiagnostic, { outcome: "started", stage: "simulator_identity" });
   if (code === "simulator-member" || code === "simulator-external-member") {
+    reportSafely(reportDiagnostic, {
+      durationMs: elapsedMilliseconds(startedAt),
+      outcome: "succeeded",
+      stage: "simulator_identity",
+    });
     return { dingtalkUserId: "simulator-user-001", displayName: "模拟组织成员" };
   }
-  throw new DingTalkAuthorizationError("AUTHORIZATION_DENIED");
+  if (code === "simulator-member-002") {
+    reportSafely(reportDiagnostic, {
+      durationMs: elapsedMilliseconds(startedAt),
+      outcome: "succeeded",
+      stage: "simulator_identity",
+    });
+    return { dingtalkUserId: "simulator-user-002", displayName: "模拟非创建者" };
+  }
+  const details = {
+    failureReason: "provider_rejected",
+    stage: "simulator_identity",
+  } as const;
+  reportSafely(reportDiagnostic, {
+    durationMs: elapsedMilliseconds(startedAt),
+    failureReason: details.failureReason,
+    outcome: "failed",
+    stage: details.stage,
+  });
+  throw new DingTalkAuthorizationError("AUTHORIZATION_DENIED", details);
 }
 
 async function exchangeCodeForIdentity(
   options: LiveDingTalkClientOptions,
   code: string,
+  reportDiagnostic?: DingTalkAuthorizationDiagnosticReporter,
 ): Promise<DingTalkIdentity> {
-  try {
-    const tokenResponse = await fetch(new URL("/v1.0/oauth2/userAccessToken", options.apiBaseUrl), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        clientId: options.clientId,
-        clientSecret: options.clientSecret,
-        code,
-        grantType: "authorization_code",
+  const token = await requestDingTalkValue({
+    readValue: readAccessToken,
+    ...(reportDiagnostic === undefined ? {} : { reportDiagnostic }),
+    request: () =>
+      fetch(new URL("/v1.0/oauth2/userAccessToken", options.apiBaseUrl), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientId: options.clientId,
+          clientSecret: options.clientSecret,
+          code,
+          grantType: "authorization_code",
+        }),
       }),
+    stage: "token_exchange",
+  });
+  return requestDingTalkValue({
+    readValue: readIdentity,
+    ...(reportDiagnostic === undefined ? {} : { reportDiagnostic }),
+    request: () =>
+      fetch(new URL("/v1.0/contact/users/me", options.apiBaseUrl), {
+        headers: { "x-acs-dingtalk-access-token": token },
+      }),
+    stage: "identity_lookup",
+  });
+}
+
+async function requestDingTalkValue<T>(input: {
+  readValue: (payload: unknown) => T | undefined;
+  reportDiagnostic?: DingTalkAuthorizationDiagnosticReporter;
+  request: () => Promise<Response>;
+  stage: DingTalkAuthorizationStage;
+}): Promise<T> {
+  const startedAt = performance.now();
+  reportSafely(input.reportDiagnostic, { outcome: "started", stage: input.stage });
+  try {
+    const response = await input.request();
+    if (!response.ok) {
+      const details = {
+        failureReason: "provider_rejected",
+        httpStatus: response.status,
+        stage: input.stage,
+      } as const;
+      reportSafely(input.reportDiagnostic, {
+        durationMs: elapsedMilliseconds(startedAt),
+        ...details,
+        outcome: "failed",
+      });
+      throw new DingTalkAuthorizationError("AUTHORIZATION_DENIED", details);
+    }
+    const payload = await readJsonPayload(response);
+    const value = input.readValue(payload);
+    if (value === undefined) {
+      const details = {
+        failureReason: "invalid_response",
+        httpStatus: response.status,
+        stage: input.stage,
+      } as const;
+      reportSafely(input.reportDiagnostic, {
+        durationMs: elapsedMilliseconds(startedAt),
+        ...details,
+        outcome: "failed",
+      });
+      throw new DingTalkAuthorizationError("PROVIDER_UNAVAILABLE", details);
+    }
+    reportSafely(input.reportDiagnostic, {
+      durationMs: elapsedMilliseconds(startedAt),
+      httpStatus: response.status,
+      outcome: "succeeded",
+      stage: input.stage,
     });
-    const token = await readAccessToken(tokenResponse);
-    const userResponse = await fetch(new URL("/v1.0/contact/users/me", options.apiBaseUrl), {
-      headers: { "x-acs-dingtalk-access-token": token },
-    });
-    return await readIdentity(userResponse);
+    return value;
   } catch (error) {
     if (error instanceof DingTalkAuthorizationError) {
       throw error;
     }
-    throw new DingTalkAuthorizationError("PROVIDER_UNAVAILABLE");
+    const details = { failureReason: "network_error", stage: input.stage } as const;
+    reportSafely(input.reportDiagnostic, {
+      durationMs: elapsedMilliseconds(startedAt),
+      ...details,
+      outcome: "failed",
+    });
+    throw new DingTalkAuthorizationError("PROVIDER_UNAVAILABLE", details);
   }
 }
 
-async function readAccessToken(response: Response) {
-  if (!response.ok) {
-    throw new DingTalkAuthorizationError("AUTHORIZATION_DENIED");
-  }
-  const payload = await response.json();
+function readAccessToken(payload: unknown) {
   if (
     !isRecord(payload) ||
     typeof payload["accessToken"] !== "string" ||
     payload["accessToken"].length === 0
   ) {
-    throw new DingTalkAuthorizationError("PROVIDER_UNAVAILABLE");
+    return undefined;
   }
   return payload["accessToken"];
 }
 
-async function readIdentity(response: Response): Promise<DingTalkIdentity> {
-  if (!response.ok) {
-    throw new DingTalkAuthorizationError("AUTHORIZATION_DENIED");
-  }
-  const payload = await response.json();
+function readIdentity(payload: unknown): DingTalkIdentity | undefined {
   if (
     !isRecord(payload) ||
     typeof payload["openId"] !== "string" ||
@@ -121,9 +240,32 @@ async function readIdentity(response: Response): Promise<DingTalkIdentity> {
     typeof payload["nick"] !== "string" ||
     payload["nick"].length === 0
   ) {
-    throw new DingTalkAuthorizationError("PROVIDER_UNAVAILABLE");
+    return undefined;
   }
   return { dingtalkUserId: payload["openId"], displayName: payload["nick"] };
+}
+
+async function readJsonPayload(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return undefined;
+  }
+}
+
+function elapsedMilliseconds(startedAt: number) {
+  return Math.max(0, Math.round(performance.now() - startedAt));
+}
+
+function reportSafely(
+  reporter: DingTalkAuthorizationDiagnosticReporter | undefined,
+  diagnostic: DingTalkAuthorizationDiagnostic,
+) {
+  try {
+    reporter?.(diagnostic);
+  } catch {
+    // Diagnostic sinks must never change the authorization result.
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

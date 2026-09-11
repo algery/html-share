@@ -1,0 +1,194 @@
+name: html-share-production
+
+services:
+  migrate:
+    build:
+      context: .
+      target: server
+    command: ["sh", "-c", "cd /workspace && pnpm db:migrate:deploy"]
+    environment: &server-environment
+      ADMIN_DINGTALK_USER_IDS: ${ADMIN_DINGTALK_USER_IDS:?ADMIN_DINGTALK_USER_IDS is required}
+      APP_AUTH_URL: ${APP_AUTH_URL:?APP_AUTH_URL is required}
+      APP_HOST: ${APP_HOST:?APP_HOST is required}
+      APP_WEB_URL: ${APP_WEB_URL:?APP_WEB_URL is required}
+      AUTH_STATE_SECRET: ${AUTH_STATE_SECRET:?AUTH_STATE_SECRET is required}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      DEMO_AUTH_URL: ${DEMO_AUTH_URL:?DEMO_AUTH_URL is required}
+      DEMO_HOST: ${DEMO_HOST:?DEMO_HOST is required}
+      DEMO_WEB_URL: ${DEMO_WEB_URL:?DEMO_WEB_URL is required}
+      DINGTALK_API_BASE_URL: ${DINGTALK_API_BASE_URL:?DINGTALK_API_BASE_URL is required}
+      DINGTALK_APP_ID: ${DINGTALK_APP_ID:?DINGTALK_APP_ID is required}
+      DINGTALK_AUTH_MODE: live
+      DINGTALK_CLIENT_ID: ${DINGTALK_CLIENT_ID:?DINGTALK_CLIENT_ID is required}
+      DINGTALK_CLIENT_SECRET: ${DINGTALK_CLIENT_SECRET:?DINGTALK_CLIENT_SECRET is required}
+      DINGTALK_CORP_ID: ${DINGTALK_CORP_ID:?DINGTALK_CORP_ID is required}
+      DINGTALK_EXTERNAL_AUTHORIZE_URL: ${DINGTALK_EXTERNAL_AUTHORIZE_URL:?DINGTALK_EXTERNAL_AUTHORIZE_URL is required}
+      MCP_TOKEN_HASH_SECRET: ${MCP_TOKEN_HASH_SECRET:?MCP_TOKEN_HASH_SECRET is required}
+      PASSWORD_RESULT_ENCRYPTION_KEY: ${PASSWORD_RESULT_ENCRYPTION_KEY:?PASSWORD_RESULT_ENCRYPTION_KEY is required}
+      PASSWORD_MANAGEMENT_ENCRYPTION_KEY: ${PASSWORD_MANAGEMENT_ENCRYPTION_KEY:?PASSWORD_MANAGEMENT_ENCRYPTION_KEY is required}
+      PASSWORD_VERIFY_IP_RATE_LIMIT_PER_MINUTE: ${PASSWORD_VERIFY_IP_RATE_LIMIT_PER_MINUTE:-60}
+      PASSWORD_VERIFY_IP_PROJECT_RATE_LIMIT_PER_MINUTE: ${PASSWORD_VERIFY_IP_PROJECT_RATE_LIMIT_PER_MINUTE:-30}
+      PASSWORD_VERIFY_PROJECT_RATE_LIMIT_PER_MINUTE: ${PASSWORD_VERIFY_PROJECT_RATE_LIMIT_PER_MINUTE:-120}
+      OBJECT_STORAGE_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY_ID:?OBJECT_STORAGE_ACCESS_KEY_ID is required}
+      OBJECT_STORAGE_ACCESS_KEY_SECRET: ${OBJECT_STORAGE_ACCESS_KEY_SECRET:?OBJECT_STORAGE_ACCESS_KEY_SECRET is required}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:?OBJECT_STORAGE_BUCKET is required}
+      OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:?OBJECT_STORAGE_ENDPOINT is required}
+      # Keep production's OSS default, while allowing an explicit S3-compatible
+      # provider for isolated deployment and recovery drills.
+      OBJECT_STORAGE_PROVIDER: ${OBJECT_STORAGE_PROVIDER:-oss}
+      OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:?OBJECT_STORAGE_REGION is required}
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 3001
+      # server has no published port; only this fixed Caddy address may supply X-Forwarded-For.
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:?TRUSTED_PROXY_IPS is required}
+    restart: "no"
+    read_only: true
+    tmpfs: ["/tmp"]
+    networks: [application]
+
+  server:
+    build:
+      context: .
+      target: server
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment: *server-environment
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp"]
+    deploy:
+      resources:
+        limits: { cpus: "1.00", memory: 768M }
+        reservations: { memory: 256M }
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [application]
+
+  worker:
+    build:
+      context: .
+      target: worker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      OBJECT_STORAGE_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY_ID:?OBJECT_STORAGE_ACCESS_KEY_ID is required}
+      OBJECT_STORAGE_ACCESS_KEY_SECRET: ${OBJECT_STORAGE_ACCESS_KEY_SECRET:?OBJECT_STORAGE_ACCESS_KEY_SECRET is required}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:?OBJECT_STORAGE_BUCKET is required}
+      OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:?OBJECT_STORAGE_ENDPOINT is required}
+      OBJECT_STORAGE_PROVIDER: ${OBJECT_STORAGE_PROVIDER:-oss}
+      OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:?OBJECT_STORAGE_REGION is required}
+      UPLOAD_FINALIZATION_CONCURRENCY: ${UPLOAD_FINALIZATION_CONCURRENCY:-10}
+      UPLOAD_HEAD_OBJECT_TIMEOUT_MS: ${UPLOAD_HEAD_OBJECT_TIMEOUT_MS:-10000}
+      WORKER_HOST: 0.0.0.0
+      WORKER_PORT: 3002
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=512m"]
+    deploy:
+      resources:
+        limits: { cpus: "2.00", memory: 2G }
+        reservations: { memory: 512M }
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3002/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [application]
+
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL is required}
+        NEXT_PUBLIC_DEMO_URL: ${NEXT_PUBLIC_DEMO_URL:?NEXT_PUBLIC_DEMO_URL is required}
+        NEXT_PUBLIC_DINGTALK_CLIENT_ID: ${NEXT_PUBLIC_DINGTALK_CLIENT_ID:?NEXT_PUBLIC_DINGTALK_CLIENT_ID is required}
+        NEXT_PUBLIC_DINGTALK_CORP_ID: ${NEXT_PUBLIC_DINGTALK_CORP_ID:?NEXT_PUBLIC_DINGTALK_CORP_ID is required}
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp"]
+    deploy:
+      resources:
+        limits: { cpus: "1.00", memory: 768M }
+        reservations: { memory: 256M }
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [application]
+
+  gateway:
+    image: caddy:2.11.4-alpine
+    depends_on:
+      server: { condition: service_healthy }
+      web: { condition: service_healthy }
+    environment:
+      APP_HOST: ${APP_HOST:?APP_HOST is required}
+      DEMO_HOST: ${DEMO_HOST:?DEMO_HOST is required}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp"]
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'curl -kfsS --resolve "$${APP_HOST}:443:127.0.0.1" "https://$${APP_HOST}/health/live" >/dev/null',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits: { cpus: "0.50", memory: 256M }
+    networks:
+      edge: {}
+      application:
+        # Reserve an address outside Docker's first dynamic assignments. Gateway
+        # starts after Server/Web, so using .2 would always collide with Web.
+        ipv4_address: 172.30.0.10
+
+volumes:
+  caddy-data:
+  caddy-config:
+
+networks:
+  edge: {}
+  application:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

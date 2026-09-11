@@ -1,15 +1,23 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { URLSearchParams } from "node:url";
 import { promisify } from "node:util";
 
+import {
+  describeUploadFile,
+  directManifestDigest,
+  publicManifest,
+  uploadPreparedFiles,
+} from "./direct-upload-smoke-support.mjs";
+
 const execute = promisify(execFile);
-const appUrl = "http://app.localhost:3001";
-const demoUrl = "http://demo.localhost:3001";
-const appWebUrl = "http://app.localhost:3000";
+const appUrl = process.env.HTML_SHARE_APP_URL ?? "http://app.localhost:3001";
+const demoUrl = process.env.HTML_SHARE_DEMO_URL ?? "http://demo.localhost:3001";
+const appWebUrl = process.env.HTML_SHARE_APP_WEB_URL ?? "http://app.localhost:3000";
+const composeProject = process.env.HTML_SHARE_COMPOSE_PROJECT;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -22,12 +30,17 @@ function request(url, init = {}) {
 async function createToken() {
   const login = await request(`${appUrl}/auth/login?return_path=/tokens`);
   const completed = await request(requiredHeader(login, "location"));
+  const cookie = requiredHeader(completed, "set-cookie").split(";", 1)[0];
+  const csrf = await request(`${appUrl}/api/csrf`, { headers: { cookie } });
+  assert(csrf.status === 200, "CSRF token creation must succeed");
+  const csrfToken = (await csrf.json()).csrfToken;
   const token = await request(`${appUrl}/api/tokens`, {
     body: JSON.stringify({ name: "Phase 5 smoke" }),
     headers: {
-      cookie: requiredHeader(completed, "set-cookie").split(";", 1)[0],
+      cookie,
       "content-type": "application/json",
       origin: appWebUrl,
+      "x-html-share-csrf": csrfToken,
     },
     method: "POST",
   });
@@ -63,42 +76,18 @@ async function publish() {
   try {
     const html = "<!doctype html><title>Phase 5</title><h1>content gateway</h1>";
     await writeFile(join(directory, "index.html"), html);
-    const archivePath = join(directory, "demo.zip");
-    await execute("zip", ["-q", archivePath, "index.html"], { cwd: directory });
-    const archiveSize = (await stat(archivePath)).size;
     const contentHash = createHash("sha256").update(html).digest("hex");
-    const manifestDigest = createHash("sha256")
-      .update(`index.html\u0000${Buffer.byteLength(html)}\u0000${contentHash}\n`)
-      .digest("hex");
+    const files = [await describeUploadFile(join(directory, "index.html"), "index.html")];
     const token = await createToken();
     const prepared = await mcpCall(token, 1, "prepare_demo_upload", {
       action: "create",
-      archive_size: archiveSize,
       client_request_id: randomUUID(),
       display_name: "Phase 5 smoke",
-      file_count: 1,
-      manifest_digest: manifestDigest,
+      files: publicManifest(files),
+      manifest_digest: directManifestDigest(files),
       target_html: "index.html",
-      total_size: Buffer.byteLength(html),
     });
-    const resolve =
-      new URL(prepared.upload_url).hostname === "host.docker.internal"
-        ? ["--resolve", "host.docker.internal:9000:127.0.0.1"]
-        : [];
-    const uploadHeaders = Object.entries(prepared.upload_headers).flatMap(([name, value]) => [
-      "-H",
-      `${name}: ${value}`,
-    ]);
-    await execute("curl", [
-      "--fail",
-      "--silent",
-      "--show-error",
-      ...resolve,
-      ...uploadHeaders,
-      "--upload-file",
-      archivePath,
-      prepared.upload_url,
-    ]);
+    await uploadPreparedFiles(prepared, files);
     await mcpCall(token, 2, "complete_demo_upload", { upload_id: prepared.upload_id });
     await waitForPublishedUpload(prepared.upload_id);
     return { contentHash, html, projectId: prepared.project_id };
@@ -209,6 +198,7 @@ async function waitForPublishedUpload(uploadId) {
   for (let attempt = 0; attempt < 15; attempt += 1) {
     const { stdout } = await execute("docker", [
       "compose",
+      ...(composeProject === undefined ? [] : ["--project-name", composeProject]),
       "--env-file",
       ".env.example",
       "exec",

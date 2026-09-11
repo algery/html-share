@@ -32,6 +32,32 @@ describe("environment validation", () => {
       NEXT_PUBLIC_DEMO_URL: "http://demo.localhost:3001",
     });
 
+    const server = readServerEnv({
+      APP_AUTH_URL: "http://app.localhost:3001",
+      APP_HOST: "app.localhost",
+      APP_WEB_URL: "http://app.localhost:3000",
+      AUTH_STATE_SECRET: "test-state-signing-secret-with-enough-length",
+      MCP_TOKEN_HASH_SECRET: "test-mcp-token-hash-secret-with-enough-length",
+      PASSWORD_MANAGEMENT_ENCRYPTION_KEY: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+      PASSWORD_RESULT_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+      DEMO_AUTH_URL: "http://demo.localhost:3001",
+      DEMO_HOST: "demo.localhost",
+      DEMO_WEB_URL: "http://demo.localhost:3001",
+      ...infrastructureEnvironment,
+      SERVER_HOST: "0.0.0.0",
+      SERVER_PORT: "3001",
+    });
+    expect(server.SERVER_PORT).toBe(3001);
+    expect(server).toMatchObject({
+      AUTH_RATE_LIMIT_PER_MINUTE: 30,
+      CONTENT_IP_RATE_LIMIT_PER_MINUTE: 1200,
+      CONTENT_SESSION_RATE_LIMIT_PER_MINUTE: 600,
+      MCP_RATE_LIMIT_PER_MINUTE: 60,
+      MCP_UPLOAD_COMPLETE_RATE_LIMIT_PER_MINUTE: 10,
+      MCP_UPLOAD_PREPARE_RATE_LIMIT_PER_MINUTE: 10,
+    });
+    expect(server.TRUSTED_PROXY_IPS).toBeUndefined();
+
     expect(
       readServerEnv({
         APP_AUTH_URL: "http://app.localhost:3001",
@@ -39,22 +65,48 @@ describe("environment validation", () => {
         APP_WEB_URL: "http://app.localhost:3000",
         AUTH_STATE_SECRET: "test-state-signing-secret-with-enough-length",
         MCP_TOKEN_HASH_SECRET: "test-mcp-token-hash-secret-with-enough-length",
+        PASSWORD_MANAGEMENT_ENCRYPTION_KEY: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+        PASSWORD_RESULT_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
         DEMO_AUTH_URL: "http://demo.localhost:3001",
         DEMO_HOST: "demo.localhost",
         DEMO_WEB_URL: "http://demo.localhost:3001",
         ...infrastructureEnvironment,
         SERVER_HOST: "0.0.0.0",
         SERVER_PORT: "3001",
-      }).SERVER_PORT,
-    ).toBe(3001);
+        TRUSTED_PROXY_IPS: "",
+      }).TRUSTED_PROXY_IPS,
+    ).toBeUndefined();
+
+    expect(
+      readServerEnv({
+        APP_AUTH_URL: "http://app.localhost:3001",
+        APP_HOST: "app.localhost",
+        APP_WEB_URL: "http://app.localhost:3000",
+        AUTH_STATE_SECRET: "test-state-signing-secret-with-enough-length",
+        MCP_TOKEN_HASH_SECRET: "test-mcp-token-hash-secret-with-enough-length",
+        PASSWORD_MANAGEMENT_ENCRYPTION_KEY: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+        PASSWORD_RESULT_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+        DEMO_AUTH_URL: "http://demo.localhost:3001",
+        DEMO_HOST: "demo.localhost",
+        DEMO_WEB_URL: "http://demo.localhost:3001",
+        ...infrastructureEnvironment,
+        SERVER_HOST: "0.0.0.0",
+        SERVER_PORT: "3001",
+        TRUSTED_PROXY_IPS: "172.30.0.2, 172.30.0.3",
+      }).TRUSTED_PROXY_IPS,
+    ).toEqual(["172.30.0.2", "172.30.0.3"]);
 
     expect(
       readWorkerEnv({
         ...infrastructureEnvironment,
         WORKER_HOST: "0.0.0.0",
         WORKER_PORT: "3002",
-      }).WORKER_PORT,
-    ).toBe(3002);
+      }),
+    ).toMatchObject({
+      UPLOAD_FINALIZATION_CONCURRENCY: 10,
+      UPLOAD_HEAD_OBJECT_TIMEOUT_MS: 10_000,
+      WORKER_PORT: 3002,
+    });
   });
 
   it("fails immediately while naming only invalid variables", () => {
@@ -116,6 +168,8 @@ describe("environment validation", () => {
         APP_WEB_URL: "http://app.localhost:3000",
         AUTH_STATE_SECRET: "test-state-signing-secret-with-enough-length",
         MCP_TOKEN_HASH_SECRET: "test-mcp-token-hash-secret-with-enough-length",
+        PASSWORD_MANAGEMENT_ENCRYPTION_KEY: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+        PASSWORD_RESULT_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
         DEMO_AUTH_URL: "http://demo.localhost:3001",
         DEMO_HOST: "demo.localhost",
         DEMO_WEB_URL: "http://demo.localhost:3001",
@@ -126,6 +180,91 @@ describe("environment validation", () => {
     ).toThrowError(/SERVER_PORT/);
   });
 
+  it("rejects unsafe rate-limit settings", () => {
+    expect(() =>
+      readServerEnv({
+        APP_AUTH_URL: "http://app.localhost:3001",
+        APP_HOST: "app.localhost",
+        APP_WEB_URL: "http://app.localhost:3000",
+        AUTH_RATE_LIMIT_PER_MINUTE: "0",
+        AUTH_STATE_SECRET: "test-state-signing-secret-with-enough-length",
+        MCP_TOKEN_HASH_SECRET: "test-mcp-token-hash-secret-with-enough-length",
+        PASSWORD_MANAGEMENT_ENCRYPTION_KEY: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+        PASSWORD_RESULT_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+        DEMO_AUTH_URL: "http://demo.localhost:3001",
+        DEMO_HOST: "demo.localhost",
+        DEMO_WEB_URL: "http://demo.localhost:3001",
+        ...infrastructureEnvironment,
+        SERVER_HOST: "127.0.0.1",
+        SERVER_PORT: "3001",
+      }),
+    ).toThrowError(/AUTH_RATE_LIMIT_PER_MINUTE/);
+  });
+
+  it("requires HTTPS outside local development and keeps browser URLs on configured hosts", () => {
+    const base = {
+      APP_AUTH_URL: "https://app.example.test",
+      APP_HOST: "app.example.test",
+      APP_WEB_URL: "https://app.example.test",
+      AUTH_STATE_SECRET: "test-state-signing-secret-with-enough-length",
+      MCP_TOKEN_HASH_SECRET: "test-mcp-token-hash-secret-with-enough-length",
+      PASSWORD_MANAGEMENT_ENCRYPTION_KEY: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+      PASSWORD_RESULT_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+      DEMO_AUTH_URL: "https://demo.example.test",
+      DEMO_HOST: "demo.example.test",
+      DEMO_WEB_URL: "https://demo.example.test",
+      ...infrastructureEnvironment,
+      SERVER_HOST: "127.0.0.1",
+      SERVER_PORT: "3001",
+    };
+    expect(() => readServerEnv({ ...base, DEMO_AUTH_URL: "http://demo.example.test" })).toThrow(
+      /DEMO_AUTH_URL/,
+    );
+    expect(() => readServerEnv({ ...base, APP_AUTH_URL: "https://other.example.test" })).toThrow(
+      /APP_AUTH_URL/,
+    );
+    for (const hostname of ["127.attacker.test", "127.0.0.1.attacker.test"]) {
+      expect(() =>
+        readServerEnv({
+          ...base,
+          APP_AUTH_URL: `http://${hostname}`,
+          APP_HOST: hostname,
+          APP_WEB_URL: `http://${hostname}`,
+        }),
+      ).toThrow(/APP_AUTH_URL, APP_WEB_URL/);
+    }
+    expect(() =>
+      readServerEnv({
+        ...base,
+        APP_AUTH_URL: "http://127.0.0.1:3001",
+        APP_HOST: "127.0.0.1",
+        APP_WEB_URL: "http://127.0.0.1:3000",
+      }),
+    ).not.toThrow();
+    const ipv6Environment = readServerEnv({
+      ...base,
+      APP_AUTH_URL: "http://[::1]:3001",
+      APP_HOST: "::1",
+      APP_WEB_URL: "http://[::1]:3000",
+    });
+    expect(ipv6Environment.APP_HOST).toBe("[::1]");
+    expect(() =>
+      readServerEnv({
+        ...base,
+        APP_AUTH_URL: "HTTPS://app.example.test",
+        APP_WEB_URL: "HTTPS://app.example.test",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      readServerEnv({
+        ...base,
+        APP_AUTH_URL: "http://[::1]@attacker.test:3001",
+        APP_HOST: "::1",
+        APP_WEB_URL: "http://[::1]:3000",
+      }),
+    ).toThrow(/APP_AUTH_URL/);
+  });
+
   it("requires database and object-storage configuration for service startup", () => {
     expect(() =>
       readServerEnv({
@@ -134,6 +273,8 @@ describe("environment validation", () => {
         APP_WEB_URL: "http://app.localhost:3000",
         AUTH_STATE_SECRET: "test-state-signing-secret-with-enough-length",
         MCP_TOKEN_HASH_SECRET: "test-mcp-token-hash-secret-with-enough-length",
+        PASSWORD_MANAGEMENT_ENCRYPTION_KEY: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+        PASSWORD_RESULT_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
         DEMO_AUTH_URL: "http://demo.localhost:3001",
         DEMO_HOST: "demo.localhost",
         DEMO_WEB_URL: "http://demo.localhost:3001",
@@ -170,6 +311,8 @@ describe("environment validation", () => {
         APP_WEB_URL: "http://app.localhost:3000",
         AUTH_STATE_SECRET: "test-state-signing-secret-with-enough-length",
         MCP_TOKEN_HASH_SECRET: "test-mcp-token-hash-secret-with-enough-length",
+        PASSWORD_MANAGEMENT_ENCRYPTION_KEY: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+        PASSWORD_RESULT_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
         DEMO_AUTH_URL: "http://demo.localhost:3001",
         DEMO_HOST: "demo.localhost:3001",
         DEMO_WEB_URL: "http://demo.localhost:3001",

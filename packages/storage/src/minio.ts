@@ -5,6 +5,7 @@ import {
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   PutBucketAclCommand,
   S3Client,
@@ -31,23 +32,25 @@ export function createMinioObjectStore(config: ObjectStoreConfig): ObjectStore {
         if (!isMissingPolicy(error)) throw error;
       });
     },
-    async createPresignedZipUpload(input) {
+    async createPresignedUpload(input) {
       return {
         headers: {
           "content-length": String(input.contentLength),
-          "content-type": "application/zip",
+          "content-md5": input.contentMd5,
+          "content-type": input.contentType,
         },
         url: await getSignedUrl(
           signingClient,
           new PutObjectCommand({
             Bucket: config.bucket,
             ContentLength: input.contentLength,
-            ContentType: "application/zip",
+            ContentMD5: input.contentMd5,
+            ContentType: input.contentType,
             Key: input.key,
           }),
           {
             expiresIn: input.expiresInSeconds,
-            signableHeaders: new Set(["content-length", "content-type"]),
+            signableHeaders: new Set(["content-length", "content-md5", "content-type"]),
           },
         ),
       };
@@ -57,27 +60,41 @@ export function createMinioObjectStore(config: ObjectStoreConfig): ObjectStore {
       if (!isReadable(result.Body)) throw new Error("OBJECT_BODY_UNAVAILABLE");
       return result.Body;
     },
-    async headObject(key) {
+    async headObject(key, options) {
       try {
         const result = await client.send(
           new HeadObjectCommand({ Bucket: config.bucket, Key: key }),
+          options?.abortSignal === undefined ? undefined : { abortSignal: options.abortSignal },
         );
-        return { size: result.ContentLength ?? 0 };
+        return {
+          contentMd5: md5FromEtag(result.ETag),
+          contentType: result.ContentType ?? "application/octet-stream",
+          size: result.ContentLength ?? 0,
+        };
       } catch (error) {
         if (isNotFound(error)) return null;
         throw error;
       }
     },
-    async putObject(input) {
-      await client.send(
-        new PutObjectCommand({
-          Body: input.body,
+    async listObjects(input) {
+      const result = await client.send(
+        new ListObjectsV2Command({
           Bucket: config.bucket,
-          ContentLength: input.size,
-          ContentType: input.contentType,
-          Key: input.key,
+          ContinuationToken: input.continuationToken,
+          MaxKeys: input.maxKeys,
+          Prefix: input.prefix,
         }),
+        input.abortSignal === undefined ? undefined : { abortSignal: input.abortSignal },
       );
+      const keys = (result.Contents ?? [])
+        .map((object) => object.Key)
+        .filter((key): key is string => key !== undefined && key.length > 0);
+      return {
+        keys,
+        ...(result.IsTruncated === true && result.NextContinuationToken !== undefined
+          ? { nextContinuationToken: result.NextContinuationToken }
+          : {}),
+      };
     },
     async deleteObjects(keys) {
       if (keys.length === 0) return;
@@ -90,6 +107,12 @@ export function createMinioObjectStore(config: ObjectStoreConfig): ObjectStore {
       assertDeleteCompleted(result.Errors);
     },
   };
+}
+
+function md5FromEtag(etag: string | undefined) {
+  const hex = etag?.replaceAll('"', "");
+  if (hex === undefined || !/^[a-f0-9]{32}$/i.test(hex)) return "";
+  return Buffer.from(hex, "hex").toString("base64");
 }
 
 function createS3Client(config: ObjectStoreConfig, endpoint: string) {

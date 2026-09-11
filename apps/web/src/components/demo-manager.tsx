@@ -10,6 +10,7 @@ interface DemoManagerProps {
 }
 
 interface DemoResponse {
+  csrfToken: string | null;
   projects: DemoSummary[];
   quota: {
     projectCount: number;
@@ -70,7 +71,7 @@ export function DemoManager({ apiUrl }: DemoManagerProps) {
               管理已发布的 Demo
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
-              Demo 只能通过 Codex 或 Claude Code 发布。这里仅展示你当前有效的项目和用量。
+              Demo 通过 Codex 或 Claude Code 发布。点击项目名称可查看全部文件并复制文件链接。
             </p>
           </div>
           <button
@@ -87,13 +88,23 @@ export function DemoManager({ apiUrl }: DemoManagerProps) {
         {state === "loading" ? <DemoSkeleton /> : null}
         {state === "expired" ? <ExpiredState /> : null}
         {state === "error" ? <ErrorState onRetry={refresh} /> : null}
-        {state === "ready" && data !== null ? <DemoContent data={data} /> : null}
+        {state === "ready" && data !== null ? (
+          <DemoContent apiUrl={apiUrl} data={data} onDeleted={refresh} />
+        ) : null}
       </section>
     </main>
   );
 }
 
-function DemoContent({ data }: { data: DemoResponse }) {
+function DemoContent({
+  apiUrl,
+  data,
+  onDeleted,
+}: {
+  apiUrl: string;
+  data: DemoResponse;
+  onDeleted: () => Promise<void>;
+}) {
   return (
     <>
       <Quota quota={data.quota} />
@@ -105,7 +116,12 @@ function DemoContent({ data }: { data: DemoResponse }) {
             已发布的 Demo
           </h2>
           <div className="mt-4">
-            <DemoList demos={data.projects} />
+            <DemoList
+              apiUrl={apiUrl}
+              csrfToken={data.csrfToken}
+              demos={data.projects}
+              onDeleted={onDeleted}
+            />
           </div>
         </section>
       )}

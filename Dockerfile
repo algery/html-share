@@ -1,4 +1,5 @@
-FROM node:24-alpine AS workspace
+ARG NODE_BASE_IMAGE=node:24-alpine
+FROM ${NODE_BASE_IMAGE} AS workspace
 
 RUN npm install --global pnpm@11.19.0
 
@@ -13,7 +14,8 @@ COPY packages/db/package.json packages/db/package.json
 COPY packages/dingtalk/package.json packages/dingtalk/package.json
 COPY packages/observability/package.json packages/observability/package.json
 COPY packages/storage/package.json packages/storage/package.json
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=html-share-pnpm-store,target=/root/.local/share/pnpm/store \
+  pnpm install --frozen-lockfile
 
 COPY . .
 
@@ -49,15 +51,16 @@ RUN pnpm build:packages && pnpm --filter @html-share/web build
 RUN mkdir -p apps/web/.next/standalone/apps/web/.next \
   && cp -R apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
 
-FROM web-build AS web
-WORKDIR /workspace/apps/web
-RUN chown -R node:node /workspace/apps/web
+FROM ${NODE_BASE_IMAGE} AS web
+WORKDIR /app
+COPY --from=web-build --chown=node:node /workspace/apps/web/.next/standalone ./
+COPY --from=web-build --chown=node:node /workspace/apps/web/public ./apps/web/public
 ENV HOSTNAME=0.0.0.0
 ENV NODE_ENV=production
 ENV PORT=3000
 EXPOSE 3000
 USER node
-CMD ["pnpm", "start"]
+CMD ["node", "apps/web/server.js"]
 
 FROM server-build AS server
 WORKDIR /workspace/apps/server

@@ -1,0 +1,94 @@
+model McpToken {
+  id          String         @id @default(uuid()) @db.Uuid
+  userId      String         @map("user_id") @db.Uuid
+  name        String
+  tokenDigest String         @unique @map("token_digest")
+  tokenSuffix String         @map("token_suffix")
+  status      McpTokenStatus @default(ACTIVE)
+  expiresAt   DateTime       @map("expires_at")
+  lastUsedAt  DateTime?      @map("last_used_at")
+  revokedAt   DateTime?      @map("revoked_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
+  @@map("mcp_tokens")
+}
+
+model AccessSession {
+  id          String         @id @default(uuid()) @db.Uuid
+  userId      String         @map("user_id") @db.Uuid
+  tokenDigest String         @unique @map("token_digest")
+  audience    AccessAudience
+  expiresAt   DateTime       @map("expires_at")
+  revokedAt   DateTime?      @map("revoked_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, audience])
+  @@index([audience, expiresAt])
+  @@map("access_sessions")
+}
+
+model AuthState {
+  id          String         @id @default(uuid()) @db.Uuid
+  stateDigest String         @unique @map("state_digest")
+  audience    AccessAudience
+  returnPath  String         @map("return_path")
+  expiresAt   DateTime       @map("expires_at")
+  consumedAt  DateTime?      @map("consumed_at")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  @@index([audience, expiresAt])
+  @@map("auth_states")
+}
+
+model CleanupJob {
+  id           String           @id @default(uuid()) @db.Uuid
+  kind         CleanupJobKind
+  targetId     String           @map("target_id")
+  objectKeys   Json             @default("[]") @map("object_keys")
+  status       CleanupJobStatus @default(PENDING)
+  attemptCount Int              @default(0) @map("attempt_count")
+  runAfter     DateTime         @map("run_after")
+  lastError    String?          @map("last_error") @db.VarChar(120)
+  completedAt  DateTime?        @map("completed_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  @@unique([kind, targetId])
+  @@index([status, runAfter])
+  @@map("cleanup_jobs")
+}
+
+model ObjectSweepState {
+  id                String    @id @db.VarChar(32)
+  continuationToken String?   @map("continuation_token")
+  runAfter          DateTime  @map("run_after")
+  claimedAt         DateTime? @map("claimed_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@index([runAfter, claimedAt])
+  @@map("object_sweep_states")
+}
+
+model AuditLog {
+  id          String      @id @default(uuid()) @db.Uuid
+  action      AuditAction
+  actorUserId String      @map("actor_user_id") @db.Uuid
+  projectId   String?     @map("project_id") @db.Uuid
+  ownerUserId String?     @map("owner_user_id") @db.Uuid
+  reason      String?     @db.VarChar(500)
+  requestIp   String      @map("request_ip") @db.VarChar(64)
+  traceId     String      @map("trace_id") @db.VarChar(64)
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  @@index([projectId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("audit_logs")
+}

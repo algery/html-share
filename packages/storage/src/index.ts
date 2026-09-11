@@ -1,6 +1,13 @@
 export { createAliyunOssObjectStore } from "./aliyun-oss.js";
 export { createMinioObjectStore } from "./minio.js";
-export type { ObjectStore, ObjectStoreConfig } from "./object-store.js";
+export type {
+  ListObjectsInput,
+  ListObjectsResult,
+  ObjectStore,
+  ObjectStoreConfig,
+} from "./object-store.js";
+export { observeObjectStoreActivity } from "./object-store-activity.js";
+export type { ObjectStoreActivity } from "./object-store-activity.js";
 
 import { createAliyunOssObjectStore } from "./aliyun-oss.js";
 import { createMinioObjectStore } from "./minio.js";

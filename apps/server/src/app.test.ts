@@ -88,7 +88,18 @@ describe("server application", () => {
     expect(response.body).toBe('{"service":"server","status":"not-found"}');
   });
 
-  it("completes external app authorization with a Host-only secure cookie", async () => {
+  it("rejects oversized request bodies before an authorization route can process them", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/internal/start",
+      headers: { host: "app.localhost" },
+      payload: { returnPath: `/${"a".repeat(1_048_576)}` },
+    });
+
+    expect(response.statusCode).toBe(413);
+  });
+
+  it("completes external app authorization with a Host-only local HTTP cookie", async () => {
     const login = await app.inject({
       method: "GET",
       url: "/auth/login?return_path=/login",
@@ -111,7 +122,7 @@ describe("server application", () => {
     expect(completed.statusCode).toBe(302);
     expect(readLocation(completed)).toBe("http://app.localhost:3000/login");
     expect(completed.headers["set-cookie"]).toContain("HttpOnly");
-    expect(completed.headers["set-cookie"]).toContain("Secure");
+    expect(completed.headers["set-cookie"]).not.toContain("Secure");
     expect(completed.headers["set-cookie"]).toContain("SameSite=Lax");
     expect(completed.headers["set-cookie"]).not.toContain("Domain=");
     expect(current.statusCode).toBe(200);
@@ -235,10 +246,21 @@ describe("server application", () => {
       headers: { host: "app.localhost" },
     });
     const cookie = readCookie(completed);
+    const currentBeforeLogout = await app.inject({
+      method: "GET",
+      url: "/auth/current",
+      headers: { cookie, host: "app.localhost" },
+    });
+    const { csrfToken } = currentBeforeLogout.json<{ csrfToken: string }>();
     const logout = await app.inject({
       method: "POST",
       url: "/auth/logout",
-      headers: { cookie, host: "app.localhost" },
+      headers: {
+        cookie,
+        host: "app.localhost",
+        origin: "http://app.localhost:3000",
+        "x-html-share-csrf": csrfToken,
+      },
     });
     const current = await app.inject({
       method: "GET",

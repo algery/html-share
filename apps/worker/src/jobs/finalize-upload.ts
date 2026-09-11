@@ -1,155 +1,141 @@
-import { createWriteStream } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { pipeline } from "node:stream/promises";
-
-import { extractArchive, inspectArchive, type ArchiveValidationError } from "@html-share/core";
-import type { ProcessingUpload, StoredFile } from "@html-share/db";
+import { digestManifest } from "@html-share/core";
+import type { ProcessingUpload } from "@html-share/db";
 import type { ObjectStore } from "@html-share/storage";
 
 export interface UploadFinalizerRepository {
   claimNextProcessingUpload(now: Date): Promise<ProcessingUpload | null>;
-  publishUpload(input: {
-    uploadId: string;
-    files: readonly StoredFile[];
-    totalSize: number;
-    now: Date;
-  }): Promise<boolean>;
-  failUpload(input: { uploadId: string; failureCode: string; now: Date }): Promise<void>;
-  recordStagedObjectKey(input: { uploadId: string; storageKey: string }): Promise<void>;
-  markTemporaryObjectsCleaned(input: { objectKeys: readonly string[]; now: Date }): Promise<void>;
-  listCleanupObjectKeys(now: Date): Promise<string[]>;
+  publishUpload(input: { uploadId: string; now: Date }): Promise<boolean>;
+  markUploadFilesVerified(input: { uploadId: string; now: Date }): Promise<void>;
+  failUpload(input: { uploadId: string; failureCode: string; now: Date }): Promise<boolean>;
 }
 
-const DELETE_BATCH_SIZE = 1000;
+const DEFAULT_HEAD_OBJECT_TIMEOUT_MS = 10_000;
+const HEAD_OBJECT_CONCURRENCY = 20;
 
 export async function finalizeNextUpload(input: {
+  onOutcome?: (outcome: { status: "published" | "failed"; traceId?: string }) => void;
   repository: UploadFinalizerRepository;
   storage: ObjectStore;
   now?: () => Date;
+  headObjectTimeoutMs?: number;
 }): Promise<"idle" | "published" | "failed"> {
   const now = input.now ?? (() => new Date());
+  const headObjectTimeoutMs = input.headObjectTimeoutMs ?? DEFAULT_HEAD_OBJECT_TIMEOUT_MS;
+  if (!Number.isInteger(headObjectTimeoutMs) || headObjectTimeoutMs < 1) {
+    throw new Error("headObjectTimeoutMs must be a positive integer");
+  }
   const task = await input.repository.claimNextProcessingUpload(now());
   if (task === null) return "idle";
-  const temporaryDirectory = await mkdtemp(join(tmpdir(), "html-share-upload-"));
-  const archivePath = join(temporaryDirectory, "upload.zip");
-  const writtenKeys: string[] = [];
-  let published = false;
+  let outcome: "published" | "failed" = "failed";
   try {
-    const archiveMetadata = await input.storage.headObject(task.temporaryObjectKey);
-    if (archiveMetadata === null || archiveMetadata.size !== task.declaredArchiveSize) {
-      throw new FinalizeError("ARCHIVE_UPLOAD_SIZE_MISMATCH");
-    }
-    const archive = await input.storage.getObject(task.temporaryObjectKey);
-    await pipeline(archive, createWriteStream(archivePath, { flags: "wx" }));
-    const entries = await inspectArchive(archivePath);
-    const declaredTotalSize = entries.reduce((total, entry) => total + entry.uncompressedSize, 0);
-    if (entries.length !== task.declaredFileCount || declaredTotalSize !== task.declaredTotalSize) {
-      throw new FinalizeError("ARCHIVE_DECLARATION_MISMATCH");
-    }
-    const extracted = await extractArchive({
-      entries,
-      putFile: async (file) => {
-        const storageKey = revisionStorageKey(task, file.path);
-        await input.repository.recordStagedObjectKey({ storageKey, uploadId: task.uploadId });
-        writtenKeys.push(storageKey);
-        await input.storage.putObject({
-          body: file.body,
-          contentType: file.mimeType,
-          key: storageKey,
-          size: file.size,
-        });
-      },
-      zipPath: archivePath,
+    validateTaskManifest(task);
+    await mapWithConcurrency(task.files, HEAD_OBJECT_CONCURRENCY, async (file) => {
+      const metadata = await headObjectWithTimeout(
+        input.storage,
+        file.storageKey,
+        headObjectTimeoutMs,
+      );
+      if (metadata === null) throw new FinalizeError("UPLOAD_OBJECT_MISSING");
+      if (metadata.size !== file.size) throw new FinalizeError("UPLOAD_OBJECT_SIZE_MISMATCH");
+      if (metadata.contentType !== file.mimeType) {
+        throw new FinalizeError("UPLOAD_OBJECT_CONTENT_TYPE_MISMATCH");
+      }
+      if (metadata.contentMd5 !== file.contentMd5) {
+        throw new FinalizeError("UPLOAD_OBJECT_CONTENT_MD5_MISMATCH");
+      }
     });
-    if (extracted.manifestDigest !== task.manifestDigest)
-      throw new FinalizeError("ARCHIVE_MANIFEST_MISMATCH");
-    if (!extracted.files.some((file) => file.path === task.targetHtml)) {
-      throw new FinalizeError("TARGET_HTML_MISSING");
-    }
+    await input.repository.markUploadFilesVerified({ now: now(), uploadId: task.uploadId });
     const publicationCommitted = await input.repository.publishUpload({
-      files: extracted.files.map((file) => ({
-        ...file,
-        storageKey: revisionStorageKey(task, file.path),
-      })),
       now: now(),
-      totalSize: extracted.totalSize,
       uploadId: task.uploadId,
     });
     if (!publicationCommitted) throw new FinalizeError("PUBLISH_NOT_APPLIED");
-    published = true;
-    await deleteTemporaryObject(input, task.temporaryObjectKey, now());
+    outcome = "published";
     return "published";
   } catch (error) {
-    if (!published) {
-      await input.storage
-        .deleteObjects([...writtenKeys, task.temporaryObjectKey])
-        .catch(() => undefined);
-      await input.repository.failUpload({
-        failureCode: errorCode(error),
-        now: now(),
-        uploadId: task.uploadId,
-      });
-      return "failed";
-    }
-    return "published";
+    await input.repository.failUpload({
+      failureCode: errorCode(error),
+      now: now(),
+      uploadId: task.uploadId,
+    });
+    // Never delete here: a stale lease holder may race a successful publisher,
+    // and signed PUTs may remain in flight. Post-expiry cleanup owns all deletion.
+    return "failed";
   } finally {
-    await rm(temporaryDirectory, { force: true, recursive: true });
+    input.onOutcome?.({
+      status: outcome,
+      ...(task.traceId === undefined ? {} : { traceId: task.traceId }),
+    });
   }
 }
 
-export async function cleanupUploadArtifacts(input: {
-  repository: UploadFinalizerRepository;
-  storage: ObjectStore;
-  now?: () => Date;
-}) {
-  const keys = await input.repository.listCleanupObjectKeys((input.now ?? (() => new Date()))());
-  for (const batch of batches(keys, DELETE_BATCH_SIZE)) {
-    await input.storage.deleteObjects(batch);
-  }
-  await input.repository.markTemporaryObjectsCleaned({
-    now: (input.now ?? (() => new Date()))(),
-    objectKeys: keys,
-  });
-  return keys.length;
-}
-
-function* batches<T>(items: readonly T[], size: number) {
-  for (let index = 0; index < items.length; index += size) yield items.slice(index, index + size);
-}
-
-async function deleteTemporaryObject(
-  input: Pick<Parameters<typeof finalizeNextUpload>[0], "repository" | "storage">,
-  key: string,
-  now: Date,
+async function mapWithConcurrency<T>(
+  values: readonly T[],
+  concurrency: number,
+  operation: (value: T) => Promise<void>,
 ) {
+  let nextIndex = 0;
+  let firstError: unknown;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+      while (firstError === undefined && nextIndex < values.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        const value = values[index];
+        if (value !== undefined) {
+          try {
+            await operation(value);
+          } catch (error) {
+            firstError ??= error;
+          }
+        }
+      }
+    }),
+  );
+  if (firstError !== undefined) throw firstError;
+}
+
+async function headObjectWithTimeout(storage: ObjectStore, key: string, timeoutMs: number) {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(new FinalizeError("UPLOAD_OBJECT_HEAD_TIMEOUT"));
+      controller.abort();
+    }, timeoutMs);
+  });
   try {
-    await input.storage.deleteObjects([key]);
-    await input.repository.markTemporaryObjectsCleaned({ now, objectKeys: [key] });
-  } catch {
-    // The completed revision is already active. Cleanup remains retriable and must never roll it back.
+    return await Promise.race([
+      storage.headObject(key, { abortSignal: controller.signal, timeoutMs }),
+      timeout,
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
-function revisionStorageKey(task: ProcessingUpload, path: string) {
-  return `projects/${task.projectKey}/revisions/${task.revisionNumber}/${path}`;
+function validateTaskManifest(task: ProcessingUpload) {
+  const totalSize = task.files.reduce((total, file) => total + file.size, 0);
+  if (task.files.length !== task.declaredFileCount || totalSize !== task.declaredTotalSize) {
+    throw new FinalizeError("UPLOAD_DECLARATION_MISMATCH");
+  }
+  if (!task.files.some((file) => file.path === task.targetHtml)) {
+    throw new FinalizeError("TARGET_HTML_MISSING");
+  }
+  const manifestDigest = digestManifest(
+    task.files.map((file) => ({
+      contentMd5: file.contentMd5,
+      mimeType: file.mimeType,
+      relativePath: file.path,
+      sha256: file.contentHash,
+      size: file.size,
+    })),
+  );
+  if (manifestDigest !== task.manifestDigest) throw new FinalizeError("UPLOAD_MANIFEST_MISMATCH");
 }
 
 function errorCode(error: unknown) {
-  if (error instanceof FinalizeError) return error.code;
-  if (isArchiveValidationError(error)) return error.code;
-  return "UPLOAD_FINALIZATION_FAILED";
-}
-
-function isArchiveValidationError(error: unknown): error is ArchiveValidationError {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "name" in error &&
-    error.name === "ArchiveValidationError" &&
-    "code" in error
-  );
+  return error instanceof FinalizeError ? error.code : "UPLOAD_FINALIZATION_FAILED";
 }
 
 class FinalizeError extends Error {

@@ -23,7 +23,14 @@ declare module "ali-oss" {
     ): Promise<string>;
     getStream(name: string): Promise<{ stream: Readable }>;
     head(name: string): Promise<{ res: OssResponse }>;
-    putStream(name: string, body: Readable): Promise<unknown>;
+    listV2(
+      query: { "continuation-token"?: string; "max-keys": number; prefix: string },
+      options?: { timeout?: number },
+    ): Promise<{
+      isTruncated?: boolean;
+      nextContinuationToken?: string;
+      objects?: { name?: string }[];
+    }>;
     deleteMulti(names: string[], options: { quiet: boolean }): Promise<unknown>;
   }
 }

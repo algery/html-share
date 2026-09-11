@@ -38,7 +38,7 @@ export function InstallGuide({ apiUrl, host, mcpUrl }: InstallGuideProps) {
     ? "unzip -o codex-html-share.zip -d ~"
     : "unzip -o claude-code-html-share.zip -d ~";
   return (
-    <div className="mt-4 grid gap-5 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+    <div className="mt-4 grid min-w-0 grid-cols-1 gap-5 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
       <p>先创建 Token；它只应保存在本机环境变量或宿主配置，不要放入项目、聊天或截图。</p>
       <section>
         <h3 className="font-semibold text-slate-900">1. 下载并安装 Skill</h3>
@@ -58,15 +58,24 @@ export function InstallGuide({ apiUrl, host, mcpUrl }: InstallGuideProps) {
         </section>
       ) : (
         <section>
-          <h3 className="font-semibold text-slate-900">3. 连接 Claude Code MCP</h3>
+          <h3 className="font-semibold text-slate-900">2. 连接 Claude Code MCP</h3>
           <p className="mt-1">
             将下列内容放入项目 <code>.mcp.json</code>，并在启动 Claude Code 前设置{" "}
             <code>HTML_SHARE_MCP_TOKEN</code>。配置使用环境变量展开，不把 Token 写入文件。
           </p>
           <Command value={claudeConfig} />
-          <Command value="export HTML_SHARE_MCP_TOKEN='<刚创建的 Token>'\nclaude mcp list" />
+          <Command value={"export HTML_SHARE_MCP_TOKEN='<刚创建的 Token>'\nclaude mcp list"} />
         </section>
       )}
+      <section>
+        <h3 className="font-semibold text-slate-900">指定链接访问方式</h3>
+        <p className="mt-1">默认仅组织成员可访问。需要密码访问时，发布时明确告诉 Agent：</p>
+        <Command value="发布这个 Demo，开启密码访问，并返回链接和访问密码。" />
+        <p className="mt-2">
+          覆盖更新会沿用原模式和密码。需要变更时明确说“关闭密码访问”或“重新生成访问密码”。
+          密码由服务端生成，未登录的查看者可输入密码，或选择钉钉登录打开。
+        </p>
+      </section>
       <p className="text-xs leading-5 text-slate-500">
         连接后运行 <code>codex mcp list</code> 或 <code>claude mcp list</code>
         ，再让宿主执行“分享这个 Demo”。

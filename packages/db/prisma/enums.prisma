@@ -1,0 +1,104 @@
+enum TenantStatus {
+  ACTIVE
+  DISABLED
+
+  @@map("tenant_status")
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+
+  @@map("user_status")
+}
+
+enum AccessAudience {
+  APP
+  DEMO
+
+  @@map("access_audience")
+}
+
+enum McpTokenStatus {
+  ACTIVE
+  REVOKED
+
+  @@map("mcp_token_status")
+}
+
+enum DemoProjectStatus {
+  PENDING
+  ACTIVE
+  DELETED
+
+  @@map("demo_project_status")
+}
+
+enum RevisionStatus {
+  PENDING
+  ACTIVE
+  FAILED
+  OBSOLETE
+
+  @@map("revision_status")
+}
+
+enum UploadAction {
+  CREATE
+  REPLACE
+
+  @@map("upload_action")
+}
+
+enum UploadTaskStatus {
+  PREPARED
+  PROCESSING
+  COMPLETED
+  FAILED
+  EXPIRED
+
+  @@map("upload_task_status")
+}
+
+enum UploadFileVerificationStatus {
+  PENDING
+  VERIFIED
+
+  @@map("upload_file_verification_status")
+}
+
+enum QuotaReservationStatus {
+  RESERVED
+  SETTLED
+  RELEASED
+
+  @@map("quota_reservation_status")
+}
+
+enum CleanupJobKind {
+  PROJECT
+  REVISION
+  UPLOAD
+  AUTH_STATE
+
+  @@map("cleanup_job_kind")
+}
+
+enum CleanupJobStatus {
+  PENDING
+  RUNNING
+  RETRY
+  COMPLETED
+
+  @@map("cleanup_job_status")
+}
+
+enum AuditAction {
+  PROJECT_DELETE
+  ADMIN_RATE_LIMITED
+  PASSWORD_ACCESS_ENABLE
+  PASSWORD_ACCESS_REGENERATE
+  PASSWORD_ACCESS_DISABLE
+
+  @@map("audit_action")
+}

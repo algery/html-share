@@ -1,12 +1,16 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { cleanupArchive, packageDemo } from "../skills/html-share/scripts/package.mjs";
 import { preflight } from "../skills/html-share/scripts/preflight.mjs";
-import { extractProjectId, publishDemo } from "../skills/html-share/scripts/upload.mjs";
+import {
+  extractProjectId,
+  publishDemo,
+  uploadPreparedFiles,
+} from "../skills/html-share/scripts/upload.mjs";
+import { mcpHarness, publishInput } from "./phase6-mcp-harness.test-helper.mjs";
 
 const directories = [];
 
@@ -17,32 +21,25 @@ afterEach(async () => {
 });
 
 describe("Phase 6 HTML Share Skill", () => {
-  it("creates a stable manifest and reproducible ZIP without modifying the source", async () => {
+  it("creates a stable per-file manifest with SHA-256, Content-MD5, and server-compatible MIME", async () => {
     const directory = await fixture({
       "assets/logo.txt": "logo",
       "index.html": '<!doctype html><link href="assets/logo.txt"><h1>ready</h1>',
     });
-    const original = await treeDigest(directory);
-    const checked = await preflight({ publishDir: directory, targetHtml: "index.html" });
-    expect(checked).toMatchObject({ fileCount: 2, status: "ready" });
-    expect(checked.totalSize).toBeGreaterThan(0);
-    const first = await packageDemo({ publishDir: directory, targetHtml: "index.html" });
-    const second = await packageDemo({ publishDir: directory, targetHtml: "index.html" });
-    try {
-      expect(await readFile(first.archivePath)).toEqual(await readFile(second.archivePath));
-      expect(await treeDigest(directory)).toBe(original);
-    } finally {
-      await first.cleanup();
-      await second.cleanup();
-    }
-  });
+    const before = await tree(directory);
+    const first = await preflight({ publishDir: directory, targetHtml: "index.html" });
+    const second = await preflight({ publishDir: directory, targetHtml: "index.html" });
 
-  it("cleans only a marked HTML Share temporary archive", async () => {
-    const directory = await fixture({ "index.html": "<h1>cleanup</h1>" });
-    const packaged = await packageDemo({ publishDir: directory, targetHtml: "index.html" });
-    await expect(cleanupArchive(packaged.archivePath, "wrong-token")).rejects.toThrow("标记不匹配");
-    await packaged.cleanup();
-    await expect(readFile(packaged.archivePath)).rejects.toThrow();
+    expect(first).toMatchObject({ fileCount: 2, status: "ready" });
+    expect(first.files).toEqual(second.files);
+    expect(first.manifestDigest).toBe(second.manifestDigest);
+    expect(first.files[1]).toMatchObject({
+      content_md5: expect.stringMatching(/^[A-Za-z0-9+/]{22}==$/),
+      mime_type: "text/html; charset=utf-8",
+      relative_path: "index.html",
+      sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(await tree(directory)).toEqual(before);
   });
 
   it("blocks sensitive files and directory-external symbolic links", async () => {
@@ -56,29 +53,38 @@ describe("Phase 6 HTML Share Skill", () => {
     );
   });
 
-  it("keeps the preflight-approved file snapshot when a symlink changes before packaging", async () => {
+  it("blocks double-encoded gateway paths before upload", async () => {
     const directory = await fixture({
-      "index.html": "<h1>safe</h1>",
-      "inside.txt": "inside payload",
+      "assets/a%2Fb.png": "not addressable",
+      "index.html": "<h1>safe target</h1>",
     });
-    const outside = await fixture({ "outside.txt": "outside payload must never upload" });
-    const linked = join(directory, "asset.txt");
-    await symlink(join(directory, "inside.txt"), linked);
-    const packaged = await packageDemo({
-      onPackage: async () => {
-        await unlink(linked);
-        await symlink(join(outside, "outside.txt"), linked);
-      },
-      publishDir: directory,
-      targetHtml: "index.html",
-    });
-    try {
-      const archive = await readFile(packaged.archivePath, "utf8");
-      expect(archive).toContain("inside payload");
-      expect(archive).not.toContain("outside payload must never upload");
-    } finally {
-      await packaged.cleanup();
-    }
+
+    const checked = await preflight({ publishDir: directory, targetHtml: "index.html" });
+
+    expect(checked.blocks).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "PATH_ESCAPE" })]),
+    );
+  });
+
+  it("detects replacement after preflight and never uploads the changed bytes", async () => {
+    const directory = await fixture({ "index.html": "inside payload" });
+    const outside = await fixture({ "outside.html": "outside payload must never upload" });
+    let dataPlaneCalls = 0;
+    await expect(
+      publishDemo(
+        publishInput(directory),
+        mcpHarness({
+          afterPrepare: async () => {
+            await unlink(join(directory, "index.html"));
+            await symlink(join(outside, "outside.html"), join(directory, "index.html"));
+          },
+          onUpload: async () => {
+            dataPlaneCalls += 1;
+          },
+        }),
+      ),
+    ).rejects.toThrow("预检后文件发生变化");
+    expect(dataPlaneCalls).toBe(0);
   });
 
   it("scans high-confidence keys in files larger than one MiB", async () => {
@@ -99,7 +105,7 @@ describe("Phase 6 HTML Share Skill", () => {
   it("accepts exact file, total-size, and file-count limits but blocks values above them", async () => {
     const boundary = await fixture({ "index.html": Buffer.alloc(5 * 1024 * 1024) });
     for (let index = 1; index < 500; index += 1) {
-      await writeFile(join(boundary, "file-" + index + ".txt"), "");
+      await writeFile(join(boundary, `file-${index}.txt`), "");
     }
     const allowed = await preflight({ publishDir: boundary, targetHtml: "index.html" });
     expect(allowed.blocks).toEqual([]);
@@ -123,131 +129,104 @@ describe("Phase 6 HTML Share Skill", () => {
     expect((await preflight({ publishDir: tooLarge, targetHtml: "index.html" })).blocks).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "FILE_SIZE_LIMIT" })]),
     );
-
-    const tooMany = await fixture({ "index.html": "ok" });
-    for (let index = 1; index <= 500; index += 1) {
-      await writeFile(join(tooMany, "file-" + index + ".txt"), "");
-    }
-    expect((await preflight({ publishDir: tooMany, targetHtml: "index.html" })).blocks).toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: "FILE_LIMIT" })]),
-    );
   });
 
-  it("requires an exact one-time acknowledgement for soft risks and invalidates it on changes", async () => {
-    const directory = await fixture({
-      "index.html":
-        '<script src="/app.js"></script><img src="missing.png"><script>import(path)</script>',
-    });
-    const first = await preflight({ publishDir: directory, targetHtml: "index.html" });
-    expect(first.status).toBe("confirmation_required");
-    expect(first.risks.map((item) => item.id)).toEqual(
-      expect.arrayContaining(["DYNAMIC_PATH", "MISSING_LOCAL_REFERENCE", "ROOT_ABSOLUTE_PATH"]),
+  it("uploads original files directly with bounded concurrency and exact signed headers", async () => {
+    const directory = await fixture(
+      Object.fromEntries(
+        Array.from({ length: 8 }, (_, index) => [
+          index === 0 ? "index.html" : `${index}.txt`,
+          `file-${index}`,
+        ]),
+      ),
     );
+    const inspection = await preflight({ publishDir: directory, targetHtml: "index.html" });
+    let active = 0;
+    let maximum = 0;
+    const bodies = [];
+    const uploads = inspection.files.map((file) => ({
+      relative_path: file.relative_path,
+      upload_headers: {
+        "content-length": String(file.size),
+        "content-md5": file.content_md5,
+        "content-type": file.mime_type,
+      },
+      upload_url: `https://storage.test/${file.relative_path}`,
+    }));
     await expect(
-      packageDemo({
-        publishDir: directory,
-        riskAckDigest: "a".repeat(64),
-        targetHtml: "index.html",
-      }),
-    ).rejects.toThrow("风险确认摘要不匹配");
-    await writeFile(join(directory, "index.html"), '<script src="/changed.js"></script>');
-    const changed = await preflight({ publishDir: directory, targetHtml: "index.html" });
-    expect(changed.riskAckDigest).not.toBe(first.riskAckDigest);
+      uploadPreparedFiles(
+        { concurrency: 3, inspection, timeoutMs: 1_000, uploads },
+        {
+          request: async (_url, init) => {
+            active += 1;
+            maximum = Math.max(maximum, active);
+            const chunks = [];
+            for await (const chunk of init.body) chunks.push(Buffer.from(chunk));
+            await Promise.resolve();
+            bodies.push(Buffer.concat(chunks).toString());
+            active -= 1;
+            return { ok: true };
+          },
+        },
+      ),
+    ).resolves.toBe(true);
+    expect(maximum).toBeLessThanOrEqual(3);
+    expect(bodies).toHaveLength(8);
   });
 
-  it("uploads only the ZIP data plane, polls terminal state, and returns an exact link", async () => {
+  it("publishes via direct file PUTs, polls terminal status, and returns the exact link", async () => {
     const directory = await fixture({ "index.html": "<h1>published</h1>" });
     const calls = [];
-    let statusChecks = 0;
-    let transientCheck = true;
+    let requestFiles;
     const result = await publishDemo(
-      {
-        action: "create",
-        demoUrl: "https://demo.example.test",
-        displayName: "Smoke",
-        mcpUrl: "https://app.example.test/mcp",
-        publishDir: directory,
-        targetHtml: "index.html",
-        token: "token_not_logged",
-      },
-      {
-        request: async (url, init = {}) => {
-          if (String(url) === "https://storage.example.test/upload") {
-            expect(init.method).toBe("PUT");
-            expect(init.headers).toEqual({
-              "content-length": "123",
-              "content-type": "application/zip",
-            });
-            return { ok: true, status: 200 };
-          }
-          const body = JSON.parse(init.body);
-          const name = body.params.name;
-          calls.push(name);
-          if (name === "check_connection" && transientCheck) {
-            transientCheck = false;
-            throw new TypeError("temporary network interruption");
-          }
-          const resultBody =
-            name === "check_connection"
-              ? { expiresAt: "2026-10-01T00:00:00.000Z", user: "Publisher" }
-              : name === "prepare_demo_upload"
-                ? {
-                    project_id: "abc12",
-                    status: "prepared",
-                    upload_headers: { "content-length": "123", "content-type": "application/zip" },
-                    upload_id: "d290f1ee-6c54-4b01-90e6-d701748f0851",
-                    upload_url: "https://storage.example.test/upload",
-                  }
-                : name === "get_demo_upload_status"
-                  ? {
-                      project_id: "abc12",
-                      status: statusChecks++ === 0 ? "processing" : "completed",
-                      upload_id: "d290f1ee-6c54-4b01-90e6-d701748f0851",
-                    }
-                  : {
-                      project_id: "abc12",
-                      status: "processing",
-                      upload_id: "d290f1ee-6c54-4b01-90e6-d701748f0851",
-                    };
-          return {
-            json: async () => ({
-              result: { content: [{ text: JSON.stringify(resultBody), type: "text" }] },
-            }),
-            ok: true,
-            status: 200,
-          };
+      publishInput(directory),
+      mcpHarness({
+        calls,
+        onPrepare: (args) => {
+          requestFiles = args.files;
         },
-        sleep: async () => undefined,
-      },
+      }),
     );
+    expect(requestFiles).toEqual([
+      expect.objectContaining({
+        content_md5: expect.any(String),
+        mime_type: "text/html; charset=utf-8",
+        relative_path: "index.html",
+        sha256: expect.any(String),
+        size: 18,
+      }),
+    ]);
     expect(calls).toEqual([
-      "check_connection",
       "check_connection",
       "prepare_demo_upload",
       "complete_demo_upload",
       "get_demo_upload_status",
-      "get_demo_upload_status",
     ]);
     expect(result).toEqual({
+      accessMode: "organization",
       projectId: "abc12",
       shareUrl: "https://demo.example.test/abc12/index.html",
       uploadId: "d290f1ee-6c54-4b01-90e6-d701748f0851",
     });
   });
 
-  it("bounds a hanging MCP request and cleans the temporary ZIP", async () => {
+  it("encodes reserved target characters in the returned share URL", async () => {
+    const directory = await fixture({ "index?.html": "<h1>encoded</h1>" });
+
+    const result = await publishDemo(
+      { ...publishInput(directory), targetHtml: "index?.html" },
+      mcpHarness(),
+    );
+
+    expect(result.shareUrl).toBe("https://demo.example.test/abc12/index%3F.html");
+  });
+
+  it("bounds a hanging MCP request without creating an archive or temporary content copy", async () => {
     const directory = await fixture({ "index.html": "<h1>timeout</h1>" });
+    const before = await tree(directory);
     await expect(
       publishDemo(
-        {
-          action: "create",
-          demoUrl: "https://demo.example.test",
-          mcpUrl: "https://app.example.test/mcp",
-          publishDir: directory,
-          requestTimeoutMs: 10,
-          targetHtml: "index.html",
-          token: "token_not_logged",
-        },
+        { ...publishInput(directory), requestTimeoutMs: 10 },
         {
           request: async (_url, init) =>
             new Promise((_resolve, reject) => {
@@ -256,6 +235,7 @@ describe("Phase 6 HTML Share Skill", () => {
         },
       ),
     ).rejects.toThrow("请求超时");
+    expect(await tree(directory)).toEqual(before);
   });
 
   it("accepts only exact project identifiers in replacement links", () => {
@@ -276,7 +256,7 @@ async function fixture(files) {
   return directory;
 }
 
-async function treeDigest(directory) {
-  const checked = await preflight({ publishDir: directory, targetHtml: "index.html" });
-  return createHash("sha256").update(JSON.stringify(checked.files)).digest("hex");
+async function tree(directory) {
+  const names = await readdir(directory, { recursive: true });
+  return createHash("sha256").update(JSON.stringify(names.sort())).digest("hex");
 }

@@ -15,6 +15,23 @@ afterEach(async () => {
 });
 
 describe("secret hygiene", () => {
+  it("allows only the exact synthetic password key for its dedicated variable", () => {
+    const example = Buffer.alloc(32, 1).toString("base64");
+    expect(inspectContent(`PASSWORD_RESULT_ENCRYPTION_KEY=${example}`)).toEqual([]);
+    expect(
+      inspectContent(
+        `PASSWORD_MANAGEMENT_ENCRYPTION_KEY=${Buffer.alloc(32, 2).toString("base64")}`,
+      ),
+    ).toEqual([]);
+    expect(inspectContent(`API_KEY=${example}`)).toEqual(["non-placeholder-API_KEY"]);
+    expect(
+      inspectContent(`PASSWORD_RESULT_ENCRYPTION_KEY=${Buffer.alloc(32, 2).toString("base64")}`),
+    ).toEqual(["non-placeholder-PASSWORD_RESULT_ENCRYPTION_KEY"]);
+    expect(inspectContent(`PASSWORD_MANAGEMENT_ENCRYPTION_KEY=${example}`)).toEqual([
+      "non-placeholder-PASSWORD_MANAGEMENT_ENCRYPTION_KEY",
+    ]);
+  });
+
   it("accepts explicit local examples and rejects broad local-looking values", () => {
     expect(inspectContent("POSTGRES_PASSWORD=html_share_local")).toEqual([]);
     expect(
@@ -25,6 +42,12 @@ describe("secret hygiene", () => {
     expect(inspectContent("API_KEY=live-local-customer-value")).toEqual([
       "non-placeholder-API_KEY",
     ]);
+  });
+
+  it("recognizes only bounded numeric password rate settings", () => {
+    expect(inspectContent("PASSWORD_VERIFY_IP_RATE_LIMIT_PER_MINUTE=60")).toEqual([]);
+    expect(inspectContent("PASSWORD_VERIFY_IP_RATE_LIMIT_PER_MINUTE=100001")).toHaveLength(1);
+    expect(inspectContent("PASSWORD_VERIFY_UNKNOWN_RATE_LIMIT_PER_MINUTE=60")).toHaveLength(1);
   });
 
   it("detects long DingTalk Client Secret values without returning the value", () => {

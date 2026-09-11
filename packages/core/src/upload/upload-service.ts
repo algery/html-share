@@ -1,15 +1,11 @@
-import { randomUUID } from "node:crypto";
-
 import type { PlatformUserIdentity } from "../auth/contracts.js";
 import {
-  MAX_DEMO_FILES,
-  MAX_DEMO_TOTAL_BYTES,
-  MAX_ZIP_ARCHIVE_BYTES,
   UPLOAD_URL_TTL_MS,
   type PrepareDemoUploadInput,
   type UploadRepository,
 } from "./contracts.js";
 import { UploadError } from "./contracts.js";
+import { normalizeRelativePath, validateManifest } from "./manifest-validator.js";
 
 export interface UploadServiceOptions {
   repository: UploadRepository;
@@ -39,20 +35,21 @@ export type UploadService = ReturnType<typeof createUploadService>;
 function normalizePrepareInput(input: PrepareDemoUploadInput) {
   const displayName = input.displayName.trim();
   const targetHtml = normalizeRelativePath(input.targetHtml);
+  const manifest = validateManifest({
+    files: input.files,
+    manifestDigest: input.manifestDigest,
+    targetHtml,
+  });
   if (
     (input.action !== "create" && input.action !== "replace") ||
+    (input.accessMode !== undefined &&
+      input.accessMode !== "organization" &&
+      input.accessMode !== "password") ||
+    (input.regeneratePassword !== undefined && typeof input.regeneratePassword !== "boolean") ||
+    (input.regeneratePassword === true &&
+      (input.action !== "replace" || input.accessMode === "organization")) ||
     displayName.length < 1 ||
     displayName.length > 80 ||
-    !Number.isInteger(input.fileCount) ||
-    input.fileCount < 1 ||
-    input.fileCount > MAX_DEMO_FILES ||
-    !Number.isSafeInteger(input.totalSize) ||
-    input.totalSize < 1 ||
-    input.totalSize > MAX_DEMO_TOTAL_BYTES ||
-    !Number.isSafeInteger(input.archiveSize) ||
-    input.archiveSize < 1 ||
-    input.archiveSize > MAX_ZIP_ARCHIVE_BYTES ||
-    !/^[a-f0-9]{64}$/i.test(input.manifestDigest) ||
     (input.riskAckDigest !== undefined && !/^[a-f0-9]{64}$/i.test(input.riskAckDigest)) ||
     !isUuid(input.clientRequestId) ||
     !/\.html?$/i.test(targetHtml) ||
@@ -63,33 +60,23 @@ function normalizePrepareInput(input: PrepareDemoUploadInput) {
   }
   return {
     action: input.action,
-    archiveSize: input.archiveSize,
+    ...(input.accessMode === undefined ? {} : { accessMode: input.accessMode }),
+    ...(input.regeneratePassword === undefined
+      ? {}
+      : { regeneratePassword: input.regeneratePassword }),
     clientRequestId: input.clientRequestId,
     displayName,
-    fileCount: input.fileCount,
-    manifestDigest: input.manifestDigest.toLowerCase(),
+    fileCount: manifest.files.length,
+    files: manifest.files,
+    manifestDigest: manifest.manifestDigest,
     targetHtml,
-    totalSize: input.totalSize,
+    totalSize: manifest.totalSize,
     ...(input.projectId === undefined ? {} : { projectId: input.projectId.toLowerCase() }),
     ...(input.riskAckDigest === undefined
       ? {}
       : { riskAckDigest: input.riskAckDigest.toLowerCase() }),
+    ...(input.traceId === undefined ? {} : { traceId: input.traceId }),
   };
-}
-
-export function createTemporaryObjectKey(uploadId = randomUUID()) {
-  return `temporary/uploads/${uploadId}.zip`;
-}
-
-export function normalizeRelativePath(value: string) {
-  if (value.length < 1 || value.length > 1024 || value.includes("\\") || value.includes("\u0000")) {
-    throw new UploadError("INVALID_UPLOAD_INPUT");
-  }
-  const segments = value.split("/");
-  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")) {
-    throw new UploadError("INVALID_UPLOAD_INPUT");
-  }
-  return segments.join("/");
 }
 
 function isProjectKey(value: string | undefined): value is string {

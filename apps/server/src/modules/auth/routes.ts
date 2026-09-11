@@ -1,16 +1,23 @@
-import type { FastifyInstance, FastifyReply } from "fastify";
-
+import { sendContentNotFound } from "../content/error-pages.js";
 import {
-  AuthenticationError,
-  type AuthSessionService,
-  type SessionAudience,
-} from "@html-share/core";
-import { DingTalkAuthorizationError, type DingTalkAuthorizationClient } from "@html-share/dingtalk";
+  validPasswordReturn,
+  setPasswordReturn,
+  redirectPasswordFailure,
+} from "./password-return.js";
+import { completeAuthorization } from "./complete-authorization.js";
+import type { FastifyInstance } from "fastify";
 
-import { clearSessionCookie, readSessionCookie, setSessionCookie } from "./cookies.js";
-import { sendContentAuthorizationError } from "../content/error-pages.js";
+import { type AuthSessionService, type PasswordAccessService } from "@html-share/core";
+import { type DingTalkAuthorizationClient } from "@html-share/dingtalk";
+
+import { clearSessionCookie, readSessionCookie, usesSecureSessionCookie } from "./cookies.js";
+import { logAuthorizationStep } from "./dingtalk-logging.js";
+import { getAudience, getCallbackUrl, readBodyValue, readQuery } from "./route-input.js";
 import { sendContentLoginPage } from "../content/login-page.js";
-import { readReturnPath, redirectToAudience } from "./return-state.js";
+import { isTrustedWriteRequest } from "../projects/write-request.js";
+import { readReturnPath } from "./return-state.js";
+import { usesSecurePasswordCookie } from "../content/password-cookies.js";
+import { registerSessionHandoffRoutes } from "./session-handoff.js";
 
 export interface AuthRouteOptions {
   appAuthUrl: string;
@@ -23,9 +30,12 @@ export interface AuthRouteOptions {
   demoWebUrl: string;
   dingtalk: DingTalkAuthorizationClient;
   sessions: AuthSessionService;
+  passwordAccess?: PasswordAccessService;
+  passwordStateSecret?: string;
 }
 
 export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptions) {
+  registerSessionHandoffRoutes(app, options);
   app.get("/auth/login", async (request, reply) => {
     const audience = getAudience(request.hostname, options);
     const returnPath = readReturnPath(readQuery(request.query, "return_path"));
@@ -33,6 +43,12 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       return reply.code(400).send({ error: "invalid_auth_request" });
     }
     const { state } = await options.sessions.beginAuthorization({ audience, returnPath });
+    logAuthorizationStep(request.log, request.traceId, {
+      audience,
+      authFlow: "external",
+      outcome: "succeeded",
+      stage: "redirect_created",
+    });
     return reply.redirect(
       options.dingtalk.createExternalAuthorizationUrl({
         callbackUrl: getCallbackUrl(audience, options),
@@ -47,7 +63,25 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     }
     const returnPath = readReturnPath(readQuery(request.query, "return_path"));
     if (returnPath === null) return reply.code(400).send({ error: "invalid_auth_request" });
+    const passwordReturn = readQuery(request.query, "password_return");
+    if (passwordReturn !== undefined) {
+      const checkedPath = await validPasswordReturn(request, options, passwordReturn);
+      if (checkedPath === false) return sendContentNotFound(reply);
+      if (checkedPath !== returnPath)
+        return reply
+          .header("cache-control", "no-store")
+          .code(400)
+          .send({ error: "invalid_auth_request" });
+    }
     const { state } = await options.sessions.beginAuthorization({ audience: "demo", returnPath });
+    if (passwordReturn !== undefined)
+      setPasswordReturn(reply, state, passwordReturn, usesSecurePasswordCookie(options.demoWebUrl));
+    logAuthorizationStep(request.log, request.traceId, {
+      audience: "demo",
+      authFlow: "external",
+      outcome: "succeeded",
+      stage: "content_login_created",
+    });
     return sendContentLoginPage(reply, {
       ...(options.demoInAppClientId === undefined ? {} : { clientId: options.demoInAppClientId }),
       ...(options.demoInAppCorpId === undefined ? {} : { corpId: options.demoInAppCorpId }),
@@ -66,6 +100,12 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       return reply.code(400).send({ error: "invalid_auth_request" });
     }
     const authorization = await options.sessions.beginAuthorization({ audience, returnPath });
+    logAuthorizationStep(request.log, request.traceId, {
+      audience,
+      authFlow: "internal",
+      outcome: "succeeded",
+      stage: "internal_start_created",
+    });
     return { audience, state: authorization.state };
   });
 
@@ -73,6 +113,13 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     const audience = getAudience(request.hostname, options);
     const code = readBodyValue(request.body, "code");
     const state = readBodyValue(request.body, "state");
+    if (
+      code === undefined &&
+      state !== undefined &&
+      audience === "demo" &&
+      (await redirectPasswordFailure(request, reply, options, state))
+    )
+      return reply;
     if (audience === null || code === undefined || state === undefined) {
       return reply.code(400).send({ error: "invalid_auth_request" });
     }
@@ -83,6 +130,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       internal: true,
       options,
       reply,
+      request,
       state,
     });
   });
@@ -91,6 +139,13 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     const audience = getAudience(request.hostname, options);
     const code = readQuery(request.query, "code");
     const state = readQuery(request.query, "state");
+    if (
+      code === undefined &&
+      state !== undefined &&
+      audience === "demo" &&
+      (await redirectPasswordFailure(request, reply, options, state))
+    )
+      return reply;
     if (audience === null || code === undefined || state === undefined) {
       return reply.code(400).send({ error: "invalid_auth_request" });
     }
@@ -101,6 +156,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       internal: false,
       options,
       reply,
+      request,
       state,
     });
   });
@@ -109,15 +165,17 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     if (getAudience(request.hostname, options) !== "app") {
       return reply.code(404).send({ error: "not_found" });
     }
+    const token = readSessionCookie(request, "app");
     const session = await options.sessions.getSession({
       audience: "app",
-      token: readSessionCookie(request, "app"),
+      token,
     });
     if (session === null) {
       return reply.code(401).send({ error: "authentication_required" });
     }
     return {
       expiresAt: session.expiresAt.toISOString(),
+      csrfToken: options.sessions.createCsrfToken({ audience: "app", token }),
       user: {
         dingtalkUserId: session.user.dingtalkUserId,
         displayName: session.user.displayName,
@@ -127,14 +185,15 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
 
   app.post("/auth/logout", async (request, reply) => {
     const audience = getAudience(request.hostname, options);
-    if (audience === null) {
+    if (audience !== "app") {
       return reply.code(404).send({ error: "not_found" });
     }
+    if (!isTrustedWriteRequest(request, reply, options)) return;
     await options.sessions.logout({
       audience,
-      token: readSessionCookie(request, audience),
+      token: readSessionCookie(request, "app"),
     });
-    clearSessionCookie(reply, audience);
+    clearSessionCookie(reply, "app", usesSecureSessionCookie(options.appAuthUrl));
     return reply.code(204).send();
   });
 
@@ -151,82 +210,4 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
     }
     return { status: "authorized" };
   });
-}
-
-async function completeAuthorization(input: {
-  audience: SessionAudience;
-  code: string;
-  contentLogin?: boolean;
-  internal: boolean;
-  options: AuthRouteOptions;
-  reply: FastifyReply;
-  state: string;
-}) {
-  try {
-    const identity = input.internal
-      ? await input.options.dingtalk.exchangeInternalAuthorizationCode(input.code)
-      : await input.options.dingtalk.exchangeExternalAuthorizationCode(input.code);
-    const authorization = await input.options.sessions.finishAuthorization({
-      audience: input.audience,
-      identity,
-      state: input.state,
-    });
-    setSessionCookie(input.reply, authorization);
-    return input.reply.redirect(
-      redirectToAudience({
-        appWebUrl: input.options.appWebUrl,
-        audience: input.audience,
-        demoWebUrl: input.options.demoWebUrl,
-        returnPath: authorization.returnPath,
-      }),
-    );
-  } catch (error) {
-    if (error instanceof AuthenticationError) {
-      if (input.contentLogin)
-        return sendContentAuthorizationError(input.reply, "AUTH_STATE_INVALID");
-      return input.reply.code(400).send({ error: "invalid_auth_state" });
-    }
-    if (error instanceof DingTalkAuthorizationError) {
-      if (input.contentLogin) {
-        return sendContentAuthorizationError(
-          input.reply,
-          error.code === "AUTHORIZATION_DENIED"
-            ? "ORGANIZATION_ACCESS_DENIED"
-            : "IDENTITY_PROVIDER_UNAVAILABLE",
-        );
-      }
-      return input.reply.code(error.code === "AUTHORIZATION_DENIED" ? 403 : 502).send({
-        error:
-          error.code === "AUTHORIZATION_DENIED"
-            ? "organization_access_denied"
-            : "identity_provider_unavailable",
-      });
-    }
-    throw error;
-  }
-}
-
-function getAudience(host: string, options: AuthRouteOptions): SessionAudience | null {
-  if (host === options.appHost) return "app";
-  if (host === options.demoHost) return "demo";
-  return null;
-}
-
-function getCallbackUrl(audience: SessionAudience, options: AuthRouteOptions) {
-  return new URL(
-    "/auth/callback",
-    audience === "app" ? options.appAuthUrl : options.demoAuthUrl,
-  ).toString();
-}
-
-function readQuery(query: unknown, name: string) {
-  if (typeof query !== "object" || query === null) return undefined;
-  const value = (query as Record<string, unknown>)[name];
-  return typeof value === "string" ? value : undefined;
-}
-
-function readBodyValue(body: unknown, name: string) {
-  if (typeof body !== "object" || body === null) return undefined;
-  const value = (body as Record<string, unknown>)[name];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
 }

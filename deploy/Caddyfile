@@ -1,0 +1,13 @@
+{$APP_HOST} {
+  route {
+    @metrics path /health/metrics
+    respond @metrics 404
+    @api path /api/* /auth/* /mcp /health/live
+    reverse_proxy @api server:3001
+    reverse_proxy web:3000
+  }
+}
+
+{$DEMO_HOST} {
+  reverse_proxy server:3001
+}

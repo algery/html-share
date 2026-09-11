@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat, opendir, realpath, stat } from "node:fs/promises";
 import { dirname, join, posix, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import {
   MAX_FILE_BYTES,
@@ -10,6 +9,8 @@ import {
   MAX_TOTAL_BYTES,
   canonicalJson,
   inside,
+  isMainModule,
+  mimeForPath,
   normalizeRelativePath,
   parseArguments,
   sha256,
@@ -37,7 +38,7 @@ export async function preflight(input) {
 
   const files = [];
   await walk(root, root, files, blocks);
-  files.sort((left, right) => left.path.localeCompare(right.path));
+  files.sort((left, right) => comparePaths(left.path, right.path));
   const target = files.find((file) => file.path === targetHtml);
   if (target === undefined)
     blocks.push(issue("TARGET_INVALID", targetHtml, "目标 HTML 不存在或不是普通文件。"));
@@ -58,9 +59,29 @@ export async function preflight(input) {
       risks.push(...(await inspectReferences({ file, files })));
     }
   }
-  const manifest = files.map(({ hash, path, size }) => ({ hash, path, size }));
+  const manifest = files.map(({ contentMd5, hash, mimeType, path, size }) => ({
+    content_md5: contentMd5,
+    mime_type: mimeType,
+    relative_path: path,
+    sha256: hash,
+    size,
+  }));
   const manifestDigest = sha256(
-    manifest.map((file) => file.path + "\u0000" + file.size + "\u0000" + file.hash + "\n").join(""),
+    manifest
+      .map(
+        (file) =>
+          file.relative_path +
+          "\u0000" +
+          file.size +
+          "\u0000" +
+          file.sha256 +
+          "\u0000" +
+          file.content_md5 +
+          "\u0000" +
+          file.mime_type +
+          "\n",
+      )
+      .join(""),
   );
   const normalizedRisks = uniqueIssues(risks);
   const riskAckDigest = sha256(
@@ -87,6 +108,10 @@ export async function preflight(input) {
   return result;
 }
 
+function comparePaths(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 async function walk(root, directory, files, blocks) {
   const entries = [];
   for await (const entry of await opendir(directory)) entries.push(entry.name);
@@ -108,11 +133,11 @@ async function walk(root, directory, files, blocks) {
         );
         continue;
       }
-      await addFile(root, location, resolved, resolvedStat, files);
+      await addFile(root, location, resolved, resolvedStat, files, blocks);
       continue;
     }
     if (entry.isDirectory()) await walk(root, location, files, blocks);
-    else if (entry.isFile()) await addFile(root, location, location, entry, files);
+    else if (entry.isFile()) await addFile(root, location, location, entry, files, blocks);
     else
       blocks.push(
         issue("PATH_ESCAPE", relative(root, location), "发布目录只能包含普通文件和目录。"),
@@ -120,9 +145,24 @@ async function walk(root, directory, files, blocks) {
   }
 }
 
-async function addFile(root, location, sourcePath, details, files) {
+async function addFile(root, location, sourcePath, details, files, blocks) {
   const path = relative(root, location).split("\\").join("/");
-  files.push({ hash: await hashFile(sourcePath), path, size: details.size, sourcePath });
+  try {
+    normalizeRelativePath(path);
+  } catch {
+    blocks.push(issue("PATH_ESCAPE", path, "文件路径无法由内容网关安全寻址。"));
+    return;
+  }
+  const hashes = await hashFile(sourcePath);
+  files.push({
+    contentMd5: hashes.contentMd5,
+    hash: hashes.sha256,
+    logicalPath: location,
+    mimeType: mimeForPath(path),
+    path,
+    size: details.size,
+    sourcePath,
+  });
 }
 
 async function inspectReferences({ file, files }) {
@@ -165,11 +205,17 @@ async function inspectReferences({ file, files }) {
 
 async function hashFile(path) {
   return new Promise((resolveHash, reject) => {
-    const hash = createHash("sha256");
+    const sha256 = createHash("sha256");
+    const md5 = createHash("md5");
     createReadStream(path)
-      .on("data", (chunk) => hash.update(chunk))
+      .on("data", (chunk) => {
+        sha256.update(chunk);
+        md5.update(chunk);
+      })
       .on("error", reject)
-      .on("end", () => resolveHash(hash.digest("hex")));
+      .on("end", () =>
+        resolveHash({ contentMd5: md5.digest("base64"), sha256: sha256.digest("hex") }),
+      );
   });
 }
 
@@ -229,7 +275,7 @@ async function main() {
   process.exitCode = result.status === "blocked" ? 2 : 0;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainModule(import.meta.url)) {
   main().catch((error) => {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;

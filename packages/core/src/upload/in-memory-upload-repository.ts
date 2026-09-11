@@ -5,143 +5,201 @@ import {
   MAX_STORAGE_BYTES_PER_USER,
   UPLOAD_IDEMPOTENCY_TTL_MS,
   UPLOAD_URL_TTL_MS,
-  type PrepareDemoUploadInput,
   type PreparedUpload,
   type UploadRepository,
-  type UploadTaskStatus,
-  UploadError,
   type UploadTaskSummary,
+  UploadError,
 } from "./contracts.js";
-import { createTemporaryObjectKey } from "./upload-service.js";
+import {
+  expireTask,
+  preparePassword,
+  requestFingerprint,
+  taskSummary,
+  toPreparedUpload,
+  type PasswordCrypto,
+  type PrepareInput,
+  type StoredProject,
+  type StoredTask,
+} from "./in-memory-upload-state.js";
 
-interface StoredProject {
-  id: string;
-  ownerUserId: string;
-  totalSize: number;
-}
-
-interface StoredTask extends Omit<PreparedUpload, "status"> {
-  action: "create" | "replace";
-  clientRequestId: string;
-  ownerUserId: string;
-  status: UploadTaskStatus;
-  createdAt: Date;
-}
+type TaskInput = Parameters<UploadRepository["getStatus"]>[0];
 
 export class InMemoryUploadRepository implements UploadRepository {
   private readonly projects = new Map<string, StoredProject>();
   private readonly tasks = new Map<string, StoredTask>();
+  private prepareQueue: Promise<unknown> = Promise.resolve();
 
-  async prepare(
-    input: PrepareDemoUploadInput & { owner: { id: string }; now: Date },
-  ): Promise<PreparedUpload> {
-    const existing = [...this.tasks.values()].find(
-      (task) =>
-        task.ownerUserId === input.owner.id &&
-        task.createdAt.getTime() + UPLOAD_IDEMPOTENCY_TTL_MS > input.now.getTime() &&
-        task.clientRequestId === input.clientRequestId,
-    );
-    if (
-      existing !== undefined &&
-      existing.expiresAt <= input.now &&
-      existing.status === "prepared"
-    ) {
-      existing.status = "expired";
-    }
-    if (
-      existing !== undefined &&
-      (existing.status === "completed" || existing.status === "processing")
-    ) {
-      return toPreparedUpload(existing, true);
-    }
-    if (existing !== undefined && existing.status !== "expired" && existing.status !== "failed") {
-      return toPreparedUpload(existing, true);
-    }
+  constructor(private readonly options: { passwordCrypto?: PasswordCrypto } = {}) {}
 
-    const project =
-      input.projectId === undefined
-        ? existing === undefined
-          ? undefined
-          : this.projects.get(existing.projectId)
-        : this.projects.get(input.projectId);
-    if (input.action === "replace") {
-      if (project === undefined) throw new UploadError("PROJECT_NOT_FOUND");
+  prepare(input: PrepareInput): Promise<PreparedUpload> {
+    const result = this.prepareQueue.then(() => this.prepareLocked(input));
+    this.prepareQueue = result.catch(() => undefined);
+    return result;
+  }
+
+  private async prepareLocked(input: PrepareInput): Promise<PreparedUpload> {
+    for (const task of this.tasks.values()) expireTask(task, input.now);
+    const existing = [...this.tasks.values()]
+      .reverse()
+      .find(
+        (task) =>
+          task.ownerUserId === input.owner.id &&
+          task.createdAt.getTime() + UPLOAD_IDEMPOTENCY_TTL_MS > input.now.getTime() &&
+          task.clientRequestId === input.clientRequestId,
+      );
+    if (existing && existing.requestFingerprint !== requestFingerprint(input))
+      throw new UploadError("INVALID_UPLOAD_INPUT");
+    if (existing && existing.status !== "expired" && existing.status !== "failed")
+      return toPreparedUpload(existing, true);
+
+    const projectId = input.projectId ?? existing?.projectId;
+    let project = projectId === undefined ? undefined : this.projects.get(projectId);
+    if (projectId !== undefined) {
+      if (!project || project.deleted) throw new UploadError("PROJECT_NOT_FOUND");
       if (project.ownerUserId !== input.owner.id) throw new UploadError("PROJECT_FORBIDDEN");
-      if (this.findActiveTask(project.id) !== undefined)
-        throw new UploadError("PROJECT_UPLOAD_CONFLICT");
+      if (this.findActiveTask(project.id)) throw new UploadError("PROJECT_UPLOAD_CONFLICT");
+    } else if (input.action === "replace") {
+      throw new UploadError("PROJECT_NOT_FOUND");
     }
-    if (input.action === "create") this.assertCreateQuota(input.owner.id, input.totalSize);
-
-    const projectId = project?.id ?? this.createProject(input.owner.id, input.totalSize);
+    if (!project) {
+      this.assertCreateQuota(input.owner.id, input.totalSize);
+      project = this.createProject(input.owner.id, input.totalSize);
+    }
     const uploadId = randomUUID();
+    // Generate before inserting either task or project, so errors leave no reservation.
+    const password = await preparePassword(project, input, uploadId, this.options.passwordCrypto);
+    // Deletion may occur while asynchronous password hashing is running.
+    if (project.deleted) throw new UploadError("PROJECT_NOT_FOUND");
     const task: StoredTask = {
-      action: input.action,
-      archiveSize: input.archiveSize,
+      ...password,
       clientRequestId: input.clientRequestId,
-      createdAt: input.now,
+      requestFingerprint: requestFingerprint(input),
+      createdAt: new Date(input.now),
       expiresAt: new Date(input.now.getTime() + UPLOAD_URL_TTL_MS),
       idempotent: false,
       ownerUserId: input.owner.id,
-      projectId,
+      projectId: project.id,
+      revisionNumber: project.nextRevision,
       status: "prepared",
-      temporaryObjectKey: createTemporaryObjectKey(uploadId),
+      targetHtml: input.targetHtml,
+      totalSize: input.totalSize,
+      files: input.files.map((file) => ({
+        ...file,
+        storageKey: `projects/${project.id}/revisions/${project.nextRevision}/${file.relativePath}`,
+      })),
       uploadId,
     };
+    project.nextRevision += 1;
+    this.projects.set(project.id, project);
     this.tasks.set(uploadId, task);
     return toPreparedUpload(task, false);
   }
 
-  async requestCompletion(input: {
-    ownerUserId: string;
-    uploadId: string;
-    now: Date;
-  }): Promise<UploadTaskSummary> {
-    const task = this.tasks.get(input.uploadId);
-    if (task === undefined || task.ownerUserId !== input.ownerUserId)
-      throw new UploadError("UPLOAD_NOT_FOUND");
-    if (task.status === "prepared" && task.expiresAt <= input.now) task.status = "expired";
+  async requestCompletion(input: TaskInput): Promise<UploadTaskSummary> {
+    const task = this.ownedTask(input);
     if (task.status === "prepared") task.status = "processing";
-    return {
-      expiresAt: task.expiresAt,
-      projectId: task.projectId,
-      status: task.status,
-      uploadId: task.uploadId,
-    };
+    return taskSummary(
+      task,
+      this.projects.get(task.projectId),
+      input.now,
+      this.options.passwordCrypto,
+    );
   }
 
-  async getStatus(input: {
-    ownerUserId: string;
-    uploadId: string;
-    now: Date;
-  }): Promise<UploadTaskSummary> {
+  async getStatus(input: TaskInput): Promise<UploadTaskSummary> {
+    const task = this.ownedTask(input);
+    return taskSummary(
+      task,
+      this.projects.get(task.projectId),
+      input.now,
+      this.options.passwordCrypto,
+    );
+  }
+
+  /** Test-double lifecycle operation; production publication is handled by the worker. */
+  async publishUpload(input: { uploadId: string; now: Date }): Promise<boolean> {
     const task = this.tasks.get(input.uploadId);
-    if (task === undefined || task.ownerUserId !== input.ownerUserId)
-      throw new UploadError("UPLOAD_NOT_FOUND");
-    if (task.status === "prepared" && task.expiresAt <= input.now) task.status = "expired";
-    return {
-      expiresAt: task.expiresAt,
-      projectId: task.projectId,
-      status: task.status,
-      uploadId: task.uploadId,
-    };
+    if (!task) return false;
+    expireTask(task, input.now);
+    const project = this.projects.get(task.projectId);
+    if (task.status !== "processing" || !project || project.deleted) return false;
+    if (project.passwordVersion !== task.passwordVersion) {
+      for (const old of this.tasks.values()) {
+        if (old.projectId === project.id && old.uploadId !== task.uploadId) {
+          old.encryptedPasswordResult = null;
+          old.passwordHash = null;
+        }
+      }
+    }
+    Object.assign(project, {
+      accessMode: task.accessMode,
+      passwordHash: task.passwordHash,
+      passwordVersion: task.passwordVersion,
+      totalSize: task.totalSize,
+      active: true,
+    });
+    task.status = "completed";
+    return true;
+  }
+
+  async failUpload(input: { uploadId: string; now: Date }): Promise<boolean> {
+    const task = this.tasks.get(input.uploadId);
+    if (!task) return false;
+    expireTask(task, input.now);
+    if (task.status !== "prepared" && task.status !== "processing") return false;
+    task.status = "failed";
+    task.passwordHash = null;
+    task.encryptedPasswordResult = null;
+    return true;
+  }
+
+  async deleteProject(input: { projectId: string; ownerUserId: string }): Promise<void> {
+    const project = this.projects.get(input.projectId);
+    if (!project || project.deleted) throw new UploadError("PROJECT_NOT_FOUND");
+    if (project.ownerUserId !== input.ownerUserId) throw new UploadError("PROJECT_FORBIDDEN");
+    project.deleted = true;
+    project.passwordHash = null;
+    project.passwordVersion += 1;
+    for (const task of this.tasks.values()) {
+      if (task.projectId !== project.id) continue;
+      task.passwordHash = null;
+      task.encryptedPasswordResult = null;
+      if (task.status === "prepared" || task.status === "processing") task.status = "failed";
+    }
+  }
+
+  private ownedTask(input: TaskInput): StoredTask {
+    const task = this.tasks.get(input.uploadId);
+    if (!task || task.ownerUserId !== input.ownerUserId) throw new UploadError("UPLOAD_NOT_FOUND");
+    expireTask(task, input.now);
+    return task;
   }
 
   private assertCreateQuota(ownerUserId: string, requestedBytes: number) {
     const projects = [...this.projects.values()].filter(
-      (project) => project.ownerUserId === ownerUserId,
+      (project) => project.ownerUserId === ownerUserId && !project.deleted,
     );
     if (projects.length >= MAX_DEMOS_PER_USER) throw new UploadError("PROJECT_QUOTA_EXCEEDED");
     const usedBytes = projects.reduce((sum, project) => sum + project.totalSize, 0);
-    if (usedBytes + requestedBytes > MAX_STORAGE_BYTES_PER_USER) {
+    if (usedBytes + requestedBytes > MAX_STORAGE_BYTES_PER_USER)
       throw new UploadError("STORAGE_QUOTA_EXCEEDED");
-    }
   }
 
-  private createProject(ownerUserId: string, totalSize: number) {
+  private createProject(ownerUserId: string, totalSize: number): StoredProject {
     let id = "";
-    while (id.length === 0 || this.projects.has(id)) id = randomProjectKey();
-    this.projects.set(id, { id, ownerUserId, totalSize });
-    return id;
+    while (id.length === 0 || this.projects.has(id))
+      id = randomUUID().replaceAll("-", "").slice(0, 5);
+    return {
+      id,
+      nextRevision: 1,
+      ownerUserId,
+      totalSize,
+      accessMode: "organization",
+      passwordHash: null,
+      passwordVersion: 0,
+      active: false,
+      deleted: false,
+    };
   }
 
   private findActiveTask(projectId: string) {
@@ -151,28 +209,4 @@ export class InMemoryUploadRepository implements UploadRepository {
         (task.status === "prepared" || task.status === "processing"),
     );
   }
-}
-
-function toPreparedUpload(task: StoredTask, idempotent: boolean): PreparedUpload {
-  return {
-    archiveSize: task.archiveSize,
-    expiresAt: task.expiresAt,
-    idempotent,
-    projectId: task.projectId,
-    status:
-      task.status === "completed"
-        ? "completed"
-        : task.status === "processing"
-          ? "processing"
-          : "prepared",
-    temporaryObjectKey: task.temporaryObjectKey,
-    uploadId: task.uploadId,
-  };
-}
-
-function randomProjectKey() {
-  return randomUUID()
-    .replaceAll("-", "")
-    .slice(0, 5)
-    .replace(/[^a-z0-9]/g, "a");
 }

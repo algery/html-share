@@ -30,6 +30,12 @@ describe("Phase 3 Token and MCP endpoints", () => {
     const { app } = buildTestApp();
     applications.push(app);
     const sessionCookie = await createAppSession(app);
+    const csrf = await app.inject({
+      method: "GET",
+      url: "/api/csrf",
+      headers: { cookie: sessionCookie, host: "app.localhost" },
+    });
+    const { csrfToken } = csrf.json<{ csrfToken: string }>();
 
     const unauthorized = await app.inject({
       method: "GET",
@@ -49,6 +55,7 @@ describe("Phase 3 Token and MCP endpoints", () => {
         cookie: sessionCookie,
         host: "app.localhost",
         origin: "http://app.localhost:3000",
+        "x-html-share-csrf": csrfToken,
       },
       payload: { name: "Codex laptop" },
     });
@@ -60,6 +67,7 @@ describe("Phase 3 Token and MCP endpoints", () => {
         cookie: sessionCookie,
         host: "app.localhost",
         origin: "http://app.localhost:3000",
+        "x-html-share-csrf": csrfToken,
       },
     });
     const revoked = await app.inject({
@@ -69,10 +77,12 @@ describe("Phase 3 Token and MCP endpoints", () => {
         cookie: sessionCookie,
         host: "app.localhost",
         origin: "http://app.localhost:3000",
+        "x-html-share-csrf": csrfToken,
       },
     });
 
     expect(unauthorized.statusCode).toBe(401);
+    expect(csrf.statusCode).toBe(200);
     expect(rejectedOrigin.statusCode).toBe(403);
     expect(created.statusCode).toBe(201);
     expect(created.headers["cache-control"]).toBe("no-store");

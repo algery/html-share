@@ -30,24 +30,42 @@ describe("Phase 5 Demo content authorization", () => {
     await Promise.all(applications.splice(0).map((app) => app.close()));
   });
 
-  it("redirects unauthenticated reads before looking up or streaming content", async () => {
+  it("checks the app session once, then sends unauthenticated organization reads to login", async () => {
     const { app, reads } = createApp();
     applications.push(app);
-    const response = await app.inject({
+    const first = await app.inject({
       method: "GET",
       url: "/abc12/a.html?preview=1",
       headers: { host: "demo.localhost" },
     });
-
+    expect(first.statusCode).toBe(302);
+    expect(first.headers.location).toBe(
+      "http://app.localhost:3001/auth/session-handoff/start?return_path=%2Fabc12%2Fa.html%3Fpreview%3D1",
+    );
+    const start = new URL(String(first.headers.location));
+    const anonymous = await app.inject({
+      url: `${start.pathname}${start.search}`,
+      headers: { host: "app.localhost" },
+    });
+    const complete = new URL(String(anonymous.headers.location));
+    const checked = await app.inject({
+      url: `${complete.pathname}${complete.search}`,
+      headers: { host: "demo.localhost" },
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/abc12/a.html?preview=1",
+      headers: { host: "demo.localhost", cookie: readCookie(checked) },
+    });
     expect(response.statusCode).toBe(302);
     expect(response.headers.location).toBe(
       "/auth/content-login?return_path=%2Fabc12%2Fa.html%3Fpreview%3D1",
     );
-    expect(response.body).toBe("");
+    expect(response.headers["set-cookie"]).toContain("Max-Age=0");
     expect(reads()).toBe(0);
   });
 
-  it("uses the native DingTalk bridge form and restores the exact signed path", async () => {
+  it("uses the native DingTalk bridge fetch and restores the exact signed path", async () => {
     const { app } = createApp();
     applications.push(app);
     const login = await app.inject({
@@ -64,7 +82,8 @@ describe("Phase 5 Demo content authorization", () => {
     expect(login.body).toContain('"clientId":"demo-client-id"');
     expect(login.body).toContain('"corpId":"demo-corp-id"');
     expect(login.body).toContain("/auth/internal/complete");
-    expect(login.body).toContain("form.submit()");
+    expect(login.body).toContain('mode:"cors"');
+    expect(login.body).toContain('accept:"application/json"');
     expect(login.body).not.toContain('redirect:"manual"');
 
     const completed = await app.inject({
@@ -84,6 +103,30 @@ describe("Phase 5 Demo content authorization", () => {
     expect(completed.statusCode).toBe(302);
     expect(completed.headers.location).toBe("http://demo.localhost:3001/abc12/a.html?preview=1");
     expect(readCookie(completed)).toContain("demo_session=");
+  });
+
+  it("returns an explicit redirect target for management in-app fetch authorization", async () => {
+    const { app } = createApp();
+    applications.push(app);
+    const start = await app.inject({
+      method: "POST",
+      url: "/auth/internal/start",
+      headers: { host: "app.localhost", origin: "http://app.localhost:3000" },
+      payload: { returnPath: "/" },
+    });
+    const { state } = start.json<{ state: string }>();
+    const completed = await app.inject({
+      method: "POST",
+      url: "/auth/internal/complete",
+      headers: { host: "app.localhost", origin: "http://app.localhost:3000" },
+      payload: { code: "simulator-member", state },
+    });
+
+    expect(completed.statusCode).toBe(200);
+    expect(completed.json()).toEqual({ redirectUrl: "http://app.localhost:3000/" });
+    expect(completed.headers.location).toBeUndefined();
+    expect(completed.headers["set-cookie"]).toContain("app_session=");
+    expect(completed.headers["access-control-expose-headers"]).toBe("x-trace-id");
   });
 
   it("renders internal and external organization denials as non-cacheable content errors", async () => {
@@ -137,7 +180,7 @@ function createApp() {
     },
   };
   const storage: ObjectStore = {
-    async createPresignedZipUpload() {
+    async createPresignedUpload() {
       throw new Error("not used");
     },
     async deleteObjects() {
@@ -151,10 +194,14 @@ function createApp() {
       return Readable.from([HTML]);
     },
     async headObject() {
-      return { size: FILE.size };
+      return {
+        contentMd5: "AAAAAAAAAAAAAAAAAAAAAA==",
+        contentType: "text/html; charset=utf-8",
+        size: FILE.size,
+      };
     },
-    async putObject() {
-      return undefined;
+    async listObjects() {
+      return { keys: [] };
     },
   };
   return {

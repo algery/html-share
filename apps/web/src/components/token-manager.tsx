@@ -36,10 +36,11 @@ export function TokenManager({ apiUrl }: TokenManagerProps) {
     setError(null);
     setIsSubmitting(true);
     try {
+      const csrfToken = await requestCsrfToken(apiUrl);
       const response = await fetch(endpoint, {
         body: JSON.stringify({ name }),
         credentials: "include",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", "x-html-share-csrf": csrfToken },
         method: "POST",
       });
       if (!response.ok) throw new Error(await readError(response));
@@ -59,8 +60,10 @@ export function TokenManager({ apiUrl }: TokenManagerProps) {
     if (!window.confirm(`确定吊销「${token.name}」吗？吊销后连接会立即失效。`)) return;
     setError(null);
     try {
+      const csrfToken = await requestCsrfToken(apiUrl);
       const response = await fetch(`${endpoint}/${encodeURIComponent(token.id)}/revoke`, {
         credentials: "include",
+        headers: { "x-html-share-csrf": csrfToken },
         method: "POST",
       });
       if (!response.ok) throw new Error(await readError(response));
@@ -161,6 +164,14 @@ export function TokenManager({ apiUrl }: TokenManagerProps) {
       </section>
     </main>
   );
+}
+
+async function requestCsrfToken(apiUrl: string) {
+  const response = await fetch(`${apiUrl}/api/csrf`, { credentials: "include" });
+  if (!response.ok) throw new Error(await readError(response));
+  const body = (await response.json()) as { csrfToken: string | null };
+  if (body.csrfToken === null) throw new Error("csrf_missing");
+  return body.csrfToken;
 }
 
 function CreatedToken({

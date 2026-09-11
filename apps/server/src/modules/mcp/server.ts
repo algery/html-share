@@ -9,8 +9,10 @@ import type { createUploadToolRateLimiter } from "./auth.js";
 
 export function createHtmlShareMcpServer(input: {
   token: AuthenticatedMcpToken;
+  demoWebUrl?: string;
   uploads?: UploadService;
   storage?: ObjectStore;
+  traceId?: string;
   uploadRateLimiter?: ReturnType<typeof createUploadToolRateLimiter>;
 }) {
   const server = new McpServer({ name: "html-share", version: "0.1.0" });
@@ -34,8 +36,10 @@ export function createHtmlShareMcpServer(input: {
   if (input.uploads !== undefined && input.storage !== undefined) {
     registerUploadTools({
       server,
+      ...(input.demoWebUrl === undefined ? {} : { demoWebUrl: input.demoWebUrl }),
       storage: input.storage,
       token: input.token,
+      ...(input.traceId === undefined ? {} : { traceId: input.traceId }),
       ...(input.uploadRateLimiter === undefined ? {} : { rateLimiter: input.uploadRateLimiter }),
       uploads: input.uploads,
     });

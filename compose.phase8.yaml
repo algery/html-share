@@ -1,0 +1,20 @@
+services:
+  server:
+    environment:
+      APP_AUTH_URL: http://app.localhost:13001
+      APP_WEB_URL: http://app.localhost:13000
+      DEMO_AUTH_URL: http://demo.localhost:13001
+      DEMO_WEB_URL: http://demo.localhost:13001
+      OBJECT_STORAGE_PUBLIC_ENDPOINT: http://localhost:19000
+    ports: !override
+      - "127.0.0.1:13001:3001"
+  worker:
+    ports: !override
+      - "127.0.0.1:13002:3002"
+  postgres:
+    ports: !override
+      - "127.0.0.1:15432:5432"
+  minio:
+    ports: !override
+      - "127.0.0.1:19000:9000"
+      - "127.0.0.1:19001:9001"

@@ -79,4 +79,47 @@ describe("server in-app authorization CORS", () => {
     expect(demoPreflight.headers["access-control-allow-origin"]).toBe("http://demo.localhost:3001");
     expect(appRejected.statusCode).toBe(403);
   });
+
+  it("allows management shell session reads and logout only from the configured origin", async () => {
+    const [current, csrf, logout, rejected, queryStringBypass] = await Promise.all([
+      app.inject({
+        method: "GET",
+        url: "/auth/current",
+        headers: { host: "app.localhost", origin: "http://app.localhost:3000" },
+      }),
+      app.inject({
+        method: "GET",
+        url: "/api/csrf",
+        headers: { host: "app.localhost", origin: "http://app.localhost:3000" },
+      }),
+      app.inject({
+        method: "POST",
+        url: "/auth/logout",
+        headers: { host: "app.localhost", origin: "http://app.localhost:3000" },
+      }),
+      app.inject({
+        method: "GET",
+        url: "/auth/current",
+        headers: { host: "app.localhost", origin: "https://attacker.test" },
+      }),
+      app.inject({
+        method: "POST",
+        url: "/auth/logout?source=demo",
+        headers: { host: "app.localhost", origin: "http://demo.localhost:3001" },
+      }),
+    ]);
+
+    expect(current.statusCode).toBe(401);
+    expect(current.headers["access-control-allow-origin"]).toBe("http://app.localhost:3000");
+    expect(current.headers["access-control-allow-credentials"]).toBe("true");
+    expect(current.headers["cache-control"]).toBe("no-store");
+    expect(csrf.statusCode).toBe(401);
+    expect(csrf.headers["cache-control"]).toBe("no-store");
+    expect(logout.statusCode).toBe(403);
+    expect(logout.headers["access-control-allow-origin"]).toBe("http://app.localhost:3000");
+    expect(logout.body).toBe('{"error":"csrf_invalid"}');
+    expect(rejected.statusCode).toBe(403);
+    expect(queryStringBypass.statusCode).toBe(403);
+    expect(queryStringBypass.body).toBe('{"error":"origin_not_allowed"}');
+  });
 });

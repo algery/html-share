@@ -8,6 +8,7 @@ import {
 } from "@html-share/core";
 
 import { readSessionCookie } from "../auth/cookies.js";
+import { isTrustedWriteRequest } from "../projects/write-request.js";
 
 export interface TokenRouteOptions {
   appHost: string;
@@ -25,7 +26,7 @@ export function registerTokenRoutes(app: FastifyInstance, options: TokenRouteOpt
   });
 
   app.post("/api/tokens", async (request, reply) => {
-    if (!isTrustedWriteRequest(request, reply, options.appWebUrl)) return;
+    if (!isTrustedWriteRequest(request, reply, options)) return;
     const session = await requireAppSession(request, reply, options);
     if (session === null) return;
     const name = readString(request.body, "name");
@@ -47,7 +48,7 @@ export function registerTokenRoutes(app: FastifyInstance, options: TokenRouteOpt
   });
 
   app.post("/api/tokens/:tokenId/revoke", async (request, reply) => {
-    if (!isTrustedWriteRequest(request, reply, options.appWebUrl)) return;
+    if (!isTrustedWriteRequest(request, reply, options)) return;
     const session = await requireAppSession(request, reply, options);
     if (session === null) return;
     const tokenId = readPathParameter(request, "tokenId");
@@ -75,12 +76,6 @@ async function requireAppSession(
     return null;
   }
   return session;
-}
-
-function isTrustedWriteRequest(request: FastifyRequest, reply: FastifyReply, appWebUrl: string) {
-  if (request.headers.origin === appWebUrl) return true;
-  reply.code(403).send({ error: "origin_not_allowed" });
-  return false;
 }
 
 function readString(body: unknown, key: string) {

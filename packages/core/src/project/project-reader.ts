@@ -6,6 +6,7 @@ export interface PublishedDemoFile {
 }
 
 export interface ManagedDemoProject {
+  accessMode: "organization" | "password";
   createdAt: Date;
   displayName: string;
   fileCount: number;
@@ -24,6 +25,10 @@ export interface OwnedProjects {
 
 export interface ProjectManagementReader {
   listOwnedActiveProjects(input: { ownerUserId: string }): Promise<OwnedProjects>;
+  findOwnedActiveProject(input: {
+    ownerUserId: string;
+    projectKey: string;
+  }): Promise<(ManagedDemoProject & { files: { relativePath: string; size: number }[] }) | null>;
 }
 
 export interface ProjectReader {

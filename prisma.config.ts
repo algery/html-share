@@ -1,7 +1,7 @@
 import { defineConfig, env } from "prisma/config";
 
 export default defineConfig({
-  schema: "packages/db/prisma/schema.prisma",
+  schema: "packages/db/prisma",
   migrations: {
     path: "packages/db/prisma/migrations",
   },

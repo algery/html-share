@@ -1,8 +1,8 @@
 import type { AuthenticatedMcpToken, McpTokenService } from "@html-share/core";
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_MAX_REQUESTS = 60;
-const UPLOAD_TOOL_RATE_LIMIT_MAX_REQUESTS = 10;
+const DEFAULT_RATE_LIMIT_MAX_REQUESTS = 60;
+const DEFAULT_UPLOAD_TOOL_RATE_LIMIT_MAX_REQUESTS = 10;
 
 export async function authenticateMcpRequest(input: {
   authorization: string | undefined;
@@ -18,8 +18,9 @@ export function hasTokenQueryParameter(url: string) {
   return parameters.has("token") || parameters.has("access_token");
 }
 
-export function createMcpRateLimiter(options?: { now?: () => Date }) {
+export function createMcpRateLimiter(options?: { maximum?: number; now?: () => Date }) {
   const now = options?.now ?? (() => new Date());
+  const maximum = options?.maximum ?? DEFAULT_RATE_LIMIT_MAX_REQUESTS;
   const entries = new Map<string, { count: number; startedAt: Date }>();
 
   return {
@@ -27,7 +28,7 @@ export function createMcpRateLimiter(options?: { now?: () => Date }) {
       const current = now();
       const keys = [`token:${input.token.id}`, `user:${input.token.user.id}`, `ip:${input.ip}`];
       const records = keys.map((key) => [key, getRecord(entries, key, current)] as const);
-      const limited = records.find(([, record]) => record.count >= RATE_LIMIT_MAX_REQUESTS);
+      const limited = records.find(([, record]) => record.count >= maximum);
       if (limited !== undefined) {
         const retryAfterSeconds = Math.max(
           1,
@@ -43,15 +44,21 @@ export function createMcpRateLimiter(options?: { now?: () => Date }) {
   };
 }
 
-export function createUploadToolRateLimiter(options?: { now?: () => Date }) {
+export function createUploadToolRateLimiter(options?: {
+  completeMaximum?: number;
+  now?: () => Date;
+  prepareMaximum?: number;
+}) {
   const now = options?.now ?? (() => new Date());
   const entries = new Map<string, { count: number; startedAt: Date }>();
+  const completeMaximum = options?.completeMaximum ?? DEFAULT_UPLOAD_TOOL_RATE_LIMIT_MAX_REQUESTS;
+  const prepareMaximum = options?.prepareMaximum ?? DEFAULT_UPLOAD_TOOL_RATE_LIMIT_MAX_REQUESTS;
   return {
     consumeComplete(uploadId: string) {
-      return consume(entries, `complete:${uploadId}`, now(), UPLOAD_TOOL_RATE_LIMIT_MAX_REQUESTS);
+      return consume(entries, `complete:${uploadId}`, now(), completeMaximum);
     },
     consumePrepare(userId: string) {
-      return consume(entries, `prepare:${userId}`, now(), UPLOAD_TOOL_RATE_LIMIT_MAX_REQUESTS);
+      return consume(entries, `prepare:${userId}`, now(), prepareMaximum);
     },
   };
 }

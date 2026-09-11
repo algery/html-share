@@ -1,0 +1,5 @@
+ALTER TYPE "audit_action" ADD VALUE IF NOT EXISTS 'ADMIN_RATE_LIMITED';
+
+ALTER TABLE "audit_logs"
+  ALTER COLUMN "project_id" DROP NOT NULL,
+  ALTER COLUMN "owner_user_id" DROP NOT NULL;

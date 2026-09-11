@@ -18,6 +18,7 @@ export function ManagementShell({ apiUrl, children }: ManagementShellProps) {
   const router = useRouter();
   const isLogin = pathname === "/login";
   const [user, setUser] = useState<CurrentUser | null>(null);
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [status, setStatus] = useState<"checking" | "ready" | "error">("checking");
   const endpoint = useMemo(() => `${apiUrl}/auth/current`, [apiUrl]);
 
@@ -35,7 +36,8 @@ export function ManagementShell({ apiUrl, children }: ManagementShellProps) {
           setStatus("error");
           return;
         }
-        const body = (await response.json()) as { user: CurrentUser };
+        const body = (await response.json()) as { csrfToken: string | null; user: CurrentUser };
+        setCsrfToken(body.csrfToken);
         setUser(body.user);
         setStatus("ready");
       },
@@ -49,7 +51,15 @@ export function ManagementShell({ apiUrl, children }: ManagementShellProps) {
   }, [endpoint, isLogin, router]);
 
   async function logout() {
-    await fetch(`${apiUrl}/auth/logout`, { credentials: "include", method: "POST" });
+    if (csrfToken === null) {
+      router.replace("/login");
+      return;
+    }
+    await fetch(`${apiUrl}/auth/logout`, {
+      credentials: "include",
+      headers: { "x-html-share-csrf": csrfToken },
+      method: "POST",
+    });
     router.replace("/login");
   }
 
@@ -63,7 +73,10 @@ export function ManagementShell({ apiUrl, children }: ManagementShellProps) {
             HTML Share
           </Link>
           <nav aria-label="管理导航" className="flex min-h-11 items-center gap-1">
-            <NavigationLink active={pathname === "/demos"} href="/demos">
+            <NavigationLink
+              active={pathname === "/demos" || pathname.startsWith("/demos/")}
+              href="/demos"
+            >
               我的 Demo
             </NavigationLink>
             <NavigationLink active={pathname === "/tokens"} href="/tokens">
