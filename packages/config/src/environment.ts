@@ -2,6 +2,8 @@ import { URL } from "node:url";
 
 import { z } from "zod";
 
+import { validateObjectStorageEnvironment } from "./object-storage-environment.js";
+
 type Environment = Record<string, string | undefined>;
 
 const port = z.coerce.number().int().min(1).max(65_535);
@@ -45,7 +47,7 @@ const infrastructureEnvironment = {
   OBJECT_STORAGE_ACCESS_KEY_SECRET: nonEmpty,
   OBJECT_STORAGE_BUCKET: nonEmpty,
   OBJECT_STORAGE_ENDPOINT: httpUrl,
-  OBJECT_STORAGE_PROVIDER: z.enum(["minio", "oss"]),
+  OBJECT_STORAGE_PROVIDER: z.enum(["minio", "oss", "r2"]),
   OBJECT_STORAGE_PUBLIC_ENDPOINT: httpUrl.optional(),
   OBJECT_STORAGE_REGION: nonEmpty,
 } as const;
@@ -95,6 +97,7 @@ const serverSchema = z
     validateBrowserUrl(context, "APP_WEB_URL", value.APP_WEB_URL, value.APP_HOST);
     validateBrowserUrl(context, "DEMO_AUTH_URL", value.DEMO_AUTH_URL, value.DEMO_HOST);
     validateBrowserUrl(context, "DEMO_WEB_URL", value.DEMO_WEB_URL, value.DEMO_HOST);
+    validateObjectStorageEnvironment(context, value);
   });
 
 function validateBrowserUrl(
@@ -149,13 +152,15 @@ function isIpv4Loopback(hostname: string) {
   );
 }
 
-const workerSchema = z.object({
-  ...infrastructureEnvironment,
-  UPLOAD_FINALIZATION_CONCURRENCY: workerConcurrency.default(10),
-  UPLOAD_HEAD_OBJECT_TIMEOUT_MS: storageOperationTimeout.default(10_000),
-  WORKER_HOST: bindHost,
-  WORKER_PORT: port,
-});
+const workerSchema = z
+  .object({
+    ...infrastructureEnvironment,
+    UPLOAD_FINALIZATION_CONCURRENCY: workerConcurrency.default(10),
+    UPLOAD_HEAD_OBJECT_TIMEOUT_MS: storageOperationTimeout.default(10_000),
+    WORKER_HOST: bindHost,
+    WORKER_PORT: port,
+  })
+  .superRefine((value, context) => validateObjectStorageEnvironment(context, value));
 
 const dingTalkSchema = z.discriminatedUnion("DINGTALK_AUTH_MODE", [
   z.object({

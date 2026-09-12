@@ -42,7 +42,7 @@ export interface ListObjectsResult {
 }
 
 export interface ObjectStoreConfig {
-  provider: "minio" | "oss";
+  provider: "minio" | "oss" | "r2";
   endpoint: string;
   publicEndpoint?: string;
   region: string;
