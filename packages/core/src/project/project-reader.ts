@@ -11,6 +11,8 @@ export interface ManagedDemoProject {
   displayName: string;
   fileCount: number;
   projectKey: string;
+  homepagePath?: string | null;
+  htmlPaths?: string[];
   totalSize: number;
   updatedAt: Date;
 }
@@ -24,6 +26,11 @@ export interface OwnedProjects {
 }
 
 export interface ProjectManagementReader {
+  setOwnedHomepage?(input: {
+    ownerUserId: string;
+    projectKey: string;
+    relativePath: string | null;
+  }): Promise<"updated" | "not_found" | "invalid_file">;
   listOwnedActiveProjects(input: { ownerUserId: string }): Promise<OwnedProjects>;
   findOwnedActiveProject(input: {
     ownerUserId: string;

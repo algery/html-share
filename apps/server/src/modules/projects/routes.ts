@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 import {
+  homepageLink,
   MAX_DEMOS_PER_USER,
   MAX_STORAGE_BYTES_PER_USER,
   type AuthSessionService,
@@ -9,10 +10,12 @@ import {
   type ManagedProjectAccess,
 } from "@html-share/core";
 
+import { registerHomepageRoute } from "./homepage-routes.js";
 import { readSessionCookie } from "../auth/cookies.js";
 
 export interface ProjectRouteOptions {
   appHost: string;
+  appWebUrl: string;
   demoWebUrl: string;
   projects?: ProjectManagementReader;
   passwordManagement?: PasswordManagementService;
@@ -20,6 +23,7 @@ export interface ProjectRouteOptions {
 }
 
 export function registerProjectRoutes(app: FastifyInstance, options: ProjectRouteOptions) {
+  registerHomepageRoute(app, options);
   app.get<{ Params: { projectId: string } }>("/api/projects/:projectId", async (request, reply) => {
     const session = await requireAppSession(request, reply, options);
     if (session === null) return;
@@ -66,6 +70,12 @@ export function registerProjectRoutes(app: FastifyInstance, options: ProjectRout
         createdAt: project.createdAt.toISOString(),
         displayName: project.displayName,
         fileCount: project.fileCount,
+        homepage: homepageLink(
+          project.files.map((file) => file.relativePath),
+          project.homepagePath,
+          project.projectKey,
+          options.demoWebUrl,
+        ),
         projectId: project.projectKey,
         totalSize: project.totalSize,
         updatedAt: project.updatedAt.toISOString(),
@@ -99,7 +109,13 @@ export function registerProjectRoutes(app: FastifyInstance, options: ProjectRout
       return reply.code(503).send({ error: "project_list_unavailable" });
     }
 
-    const result = await options.projects.listOwnedActiveProjects({ ownerUserId: session.user.id });
+    reply.header("Cache-Control", "private, no-store");
+    let result;
+    try {
+      result = await options.projects.listOwnedActiveProjects({ ownerUserId: session.user.id });
+    } catch {
+      return reply.code(503).send({ error: "project_list_unavailable" });
+    }
     return {
       csrfToken: options.sessions.createCsrfToken({
         audience: "app",
@@ -110,6 +126,12 @@ export function registerProjectRoutes(app: FastifyInstance, options: ProjectRout
         createdAt: project.createdAt.toISOString(),
         displayName: project.displayName,
         fileCount: project.fileCount,
+        homepage: homepageLink(
+          project.htmlPaths ?? [],
+          project.homepagePath,
+          project.projectKey,
+          options.demoWebUrl,
+        ),
         projectId: project.projectKey,
         projectPrefix: new URL(`/${project.projectKey}/`, options.demoWebUrl).toString(),
         totalSize: project.totalSize,

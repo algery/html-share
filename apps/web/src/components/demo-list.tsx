@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 
-import { CopyCodeButton } from "./copy-code-button";
+import { DemoHomepageLink, type DemoHomepage } from "./demo-homepage-link";
+import { DeleteEntry } from "./demo-delete-dialog";
 import { AccessModeBadge } from "./access-mode-badge";
 
 export interface DemoSummary {
@@ -13,6 +14,7 @@ export interface DemoSummary {
   fileCount: number;
   projectId: string;
   projectPrefix: string;
+  homepage?: DemoHomepage;
   totalSize: number;
   updatedAt: string;
 }
@@ -29,18 +31,25 @@ export function DemoList({ apiUrl, csrfToken, demos, onDeleted }: DemoListProps)
   return (
     <>
       <div className="hidden overflow-x-auto rounded-xl border border-slate-200 md:block">
-        <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+        <table className="w-full min-w-[920px] table-fixed divide-y divide-slate-200 text-left text-sm">
+          <colgroup>
+            <col className="w-[240px]" />
+            <col className="w-[180px]" />
+            <col className="w-[100px]" />
+            <col className="w-[64px]" />
+            <col className="w-[72px]" />
+            <col className="w-[200px]" />
+            <col className="w-[64px]" />
+          </colgroup>
           <thead className="bg-slate-50 text-slate-600">
             <tr>
               <Header>名称</Header>
-              <Header>项目标识</Header>
-              <Header>项目前缀</Header>
+              <Header>首页链接</Header>
               <Header>访问方式</Header>
               <Header>文件</Header>
               <Header>大小</Header>
-              <Header>创建时间</Header>
-              <Header>更新时间</Header>
-              <Header>操作</Header>
+              <Header>时间</Header>
+              <th className="sticky right-0 bg-slate-50 px-4 py-3 font-medium">操作</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white">
@@ -75,21 +84,28 @@ function Header({ children }: { children: string }) {
 function DemoRow({ demo, onDelete }: { demo: DemoSummary; onDelete: (demo: DemoSummary) => void }) {
   return (
     <tr>
-      <td className="px-4 py-3 font-medium">
-        <DemoName demo={demo} />
+      <td className="min-w-60 px-4 py-3 font-medium">
+        <div className="truncate">
+          <DemoName demo={demo} />
+        </div>
+        <p className="mt-1 font-mono text-xs text-slate-500">{demo.projectId}</p>
       </td>
-      <td className="px-4 py-3 font-mono">{demo.projectId}</td>
-      <td className="max-w-48 px-4 py-3">
-        <Prefix value={demo.projectPrefix} />
+      <td className="px-4 py-3">
+        <DemoHomepageLink demo={demo} />
       </td>
       <td className="px-4 py-3">
         <AccessModeBadge mode={demo.accessMode} />
       </td>
       <td className="px-4 py-3">{demo.fileCount}</td>
       <td className="px-4 py-3 whitespace-nowrap">{formatBytes(demo.totalSize)}</td>
-      <td className="px-4 py-3 whitespace-nowrap">{formatDate(demo.createdAt)}</td>
-      <td className="px-4 py-3 whitespace-nowrap">{formatDate(demo.updatedAt)}</td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3 whitespace-nowrap text-xs leading-5">
+        <p>
+          <span className="text-slate-500">更新 </span>
+          {formatDate(demo.updatedAt)}
+        </p>
+        <p className="text-slate-500">创建 {formatDate(demo.createdAt)}</p>
+      </td>
+      <td className="sticky right-0 bg-white px-4 py-3">
         <DeleteButton demo={demo} onDelete={onDelete} />
       </td>
     </tr>
@@ -124,9 +140,9 @@ function DemoCard({
         <Detail label="创建时间" value={formatDate(demo.createdAt)} />
         <Detail label="更新时间" value={formatDate(demo.updatedAt)} />
         <div className="col-span-2">
-          <dt className="text-slate-500">项目前缀</dt>
+          <dt className="text-slate-500">首页链接</dt>
           <dd className="mt-1">
-            <Prefix value={demo.projectPrefix} />
+            <DemoHomepageLink demo={demo} />
           </dd>
         </div>
       </dl>
@@ -147,21 +163,11 @@ function DemoName({ demo }: { demo: DemoSummary }) {
   return (
     <Link
       className="text-blue-700 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
+      title={demo.displayName}
       href={`/demos/${demo.projectId}`}
     >
       {demo.displayName}
     </Link>
-  );
-}
-
-function Prefix({ value }: { value: string }) {
-  return (
-    <div className="min-w-0">
-      <code className="block truncate text-xs text-slate-700" title={value}>
-        {value}
-      </code>
-      <CopyCodeButton label="复制前缀" value={value} />
-    </div>
   );
 }
 
@@ -180,104 +186,6 @@ function DeleteButton({
     >
       删除
     </button>
-  );
-}
-
-function DeleteEntry({
-  apiUrl,
-  csrfToken,
-  demo,
-  onClose,
-  onDeleted,
-}: {
-  apiUrl: string;
-  csrfToken: string | null;
-  demo: DemoSummary;
-  onClose: () => void;
-  onDeleted: () => Promise<void>;
-}) {
-  const [confirmation, setConfirmation] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const canDelete = confirmation === demo.projectId && !submitting;
-
-  async function confirmDeletion() {
-    if (!canDelete) return;
-    if (csrfToken === null) {
-      setError("安全校验已过期，请重新登录后再试。");
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      const response = await fetch(`${apiUrl}/api/projects/${demo.projectId}/delete`, {
-        body: JSON.stringify({ confirmation }),
-        credentials: "include",
-        headers: { "content-type": "application/json", "x-html-share-csrf": csrfToken },
-        method: "POST",
-      });
-      if (!response.ok) throw new Error("delete_request_failed");
-      await onDeleted();
-      onClose();
-    } catch {
-      setError("删除未完成，请重试；若问题持续，请携带诊断编号 DEMO_DELETE_FAILED 联系管理员。");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div
-      aria-labelledby="delete-entry-title"
-      aria-modal="true"
-      className="fixed inset-0 z-10 flex items-end bg-slate-950/40 p-4 sm:items-center sm:justify-center"
-      role="dialog"
-    >
-      <section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-        <h2 className="text-lg font-semibold" id="delete-entry-title">
-          删除 Demo
-        </h2>
-        <p className="mt-3 text-sm leading-6 text-slate-600">
-          将删除「{demo.displayName}」（项目标识：<code>{demo.projectId}</code>
-          ）。删除不可恢复，确认后所有链接会立即失效，文件将在 24 小时内清理。
-        </p>
-        <label
-          className="mt-5 block text-sm font-medium text-slate-800"
-          htmlFor="delete-project-id"
-        >
-          输入项目标识 <code>{demo.projectId}</code> 以确认
-        </label>
-        <input
-          autoComplete="off"
-          className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 font-mono text-sm focus:outline-2 focus:outline-offset-2 focus:outline-blue-700"
-          id="delete-project-id"
-          onChange={(event) => setConfirmation(event.target.value)}
-          value={confirmation}
-        />
-        {error === null ? null : (
-          <p className="mt-3 text-sm text-rose-700" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="mt-6 flex flex-wrap justify-end gap-3">
-          <button
-            className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
-            onClick={onClose}
-            type="button"
-          >
-            取消
-          </button>
-          <button
-            className="min-h-11 rounded-lg bg-rose-700 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-rose-300 hover:bg-rose-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
-            disabled={!canDelete}
-            onClick={() => void confirmDeletion()}
-            type="button"
-          >
-            {submitting ? "正在删除…" : "永久删除"}
-          </button>
-        </div>
-      </section>
-    </div>
   );
 }
 

@@ -153,6 +153,7 @@ export function buildServerApp(options: ServerAppOptions): FastifyInstance {
   });
   registerProjectRoutes(app, {
     appHost: options.appHost,
+    appWebUrl: options.appWebUrl,
     demoWebUrl: options.demoWebUrl,
     ...(options.projectManagement === undefined ? {} : { projects: options.projectManagement }),
     ...(options.passwordManagement === undefined

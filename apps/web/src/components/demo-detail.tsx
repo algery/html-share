@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { ProjectHomepageManager } from "./project-homepage-manager";
 import { CopyCodeButton } from "./copy-code-button";
 import { formatBytes, formatDate, type DemoSummary } from "./demo-list";
 import { PasswordAccessManager, type ProjectAccessState } from "./password-access-manager";
@@ -50,6 +51,15 @@ export function DemoDetail({ apiUrl, projectId }: { apiUrl: string; projectId: s
       });
     return () => controller.abort();
   }, [apiUrl, projectId, attempt]);
+
+  async function reloadHomepage() {
+    const response = await fetch(`${apiUrl}/api/projects/${encodeURIComponent(projectId)}`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error("homepage_reload_failed");
+    setState({ status: "ready", data: (await response.json()) as DemoDetailResponse });
+  }
 
   function reload() {
     setState({ status: "loading" });
@@ -143,6 +153,14 @@ export function DemoDetail({ apiUrl, projectId }: { apiUrl: string; projectId: s
               csrfToken={state.data.csrfToken}
               onChanged={updateAccess}
               projectId={projectId}
+            />
+            <ProjectHomepageManager
+              apiUrl={apiUrl}
+              projectId={projectId}
+              csrfToken={state.data.csrfToken}
+              homepage={state.data.project.homepage}
+              files={state.data.files}
+              onSaved={reloadHomepage}
             />
             <ProjectFiles data={state.data} />
           </>

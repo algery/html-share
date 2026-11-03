@@ -89,3 +89,5 @@ export type {
   PasswordAccessPath,
   AuthorizedPasswordFile,
 } from "./access/contracts.js";
+
+export { resolveHomepage, homepageLink } from "./project/homepage.js";

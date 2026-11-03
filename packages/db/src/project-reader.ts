@@ -2,8 +2,11 @@ import type { ProjectManagementReader, ProjectReader } from "@html-share/core";
 
 import { DemoProjectStatus, RevisionStatus, type PrismaClient } from "./generated/prisma/client.js";
 
+import { createHomepageWriter } from "./project-homepage-repository.js";
+
 export function createProjectReader(prisma: PrismaClient): ProjectReader & ProjectManagementReader {
   return {
+    setOwnedHomepage: createHomepageWriter(prisma),
     async findOwnedActiveProject(input) {
       const project = await prisma.demoProject.findFirst({
         select: {
@@ -11,6 +14,7 @@ export function createProjectReader(prisma: PrismaClient): ProjectReader & Proje
           createdAt: true,
           displayName: true,
           fileCount: true,
+          homepagePath: true,
           projectKey: true,
           totalSize: true,
           updatedAt: true,
@@ -85,9 +89,11 @@ export function createProjectReader(prisma: PrismaClient): ProjectReader & Proje
           createdAt: true,
           displayName: true,
           fileCount: true,
+          homepagePath: true,
           projectKey: true,
           totalSize: true,
           updatedAt: true,
+          currentRevision: { select: { status: true, files: { select: { relativePath: true } } } },
         },
         where: {
           ownerUserId: input.ownerUserId,
@@ -95,8 +101,14 @@ export function createProjectReader(prisma: PrismaClient): ProjectReader & Proje
         },
       });
       return {
-        projects: projects.map((project) => ({
+        projects: projects.map(({ currentRevision, ...project }) => ({
           ...project,
+          htmlPaths:
+            currentRevision?.status === RevisionStatus.ACTIVE
+              ? currentRevision.files
+                  .map((file) => file.relativePath)
+                  .filter((path) => /\.html?$/i.test(path))
+              : [],
           accessMode: project.accessMode === "password" ? "password" : "organization",
           totalSize: Number(project.totalSize),
         })),

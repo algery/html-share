@@ -40,6 +40,7 @@ model DemoProject {
   displayName          String                @map("display_name") @db.VarChar(80)
   status               DemoProjectStatus     @default(PENDING)
   accessMode           String                @default("organization") @map("access_mode")
+  homepagePath         String?               @map("homepage_path")
   passwordHash         String?               @map("password_hash")
   encryptedPassword    String?               @map("encrypted_password")
   passwordVersion      Int                   @default(0) @map("password_version")

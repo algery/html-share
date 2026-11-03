@@ -82,6 +82,12 @@ describe("owned project detail API", () => {
         updatedAt: detail.updatedAt.toISOString(),
         displayName: "Demo",
         fileCount: 2,
+        homepage: {
+          configuredPath: null,
+          path: "中文目录/页面 #?%&.html",
+          source: "automatic",
+          url: "http://demo.localhost:3001/abc12/%E4%B8%AD%E6%96%87%E7%9B%AE%E5%BD%95/%E9%A1%B5%E9%9D%A2%20%23%3F%25%26.html",
+        },
         projectId: "abc12",
         totalSize: 15,
       },

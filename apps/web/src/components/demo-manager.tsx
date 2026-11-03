@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { DemoList, type DemoSummary } from "./demo-list";
+import { type DemoSummary } from "./demo-list";
+import { DemoBrowser } from "./demo-browser";
 
 interface DemoManagerProps {
   apiUrl: string;
 }
 
-interface DemoResponse {
+export interface DemoResponse {
   csrfToken: string | null;
   projects: DemoSummary[];
   quota: {
@@ -62,7 +63,7 @@ export function DemoManager({ apiUrl }: DemoManagerProps) {
   }, [endpoint]);
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-14">
+    <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-14">
       <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -76,6 +77,7 @@ export function DemoManager({ apiUrl }: DemoManagerProps) {
           </div>
           <button
             className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
+            disabled={state === "loading"}
             onClick={() => void refresh()}
             type="button"
           >
@@ -85,10 +87,12 @@ export function DemoManager({ apiUrl }: DemoManagerProps) {
         <div aria-live="polite" className="sr-only">
           {notice}
         </div>
-        {state === "loading" ? <DemoSkeleton /> : null}
+        {state === "loading" && data === null ? <DemoSkeleton /> : null}
         {state === "expired" ? <ExpiredState /> : null}
-        {state === "error" ? <ErrorState onRetry={refresh} /> : null}
-        {state === "ready" && data !== null ? (
+        {state === "error" ? (
+          <ErrorState onRetry={refresh} hasPreviousData={data !== null} />
+        ) : null}
+        {(state === "ready" || state === "loading" || state === "error") && data !== null ? (
           <DemoContent apiUrl={apiUrl} data={data} onDeleted={refresh} />
         ) : null}
       </section>
@@ -111,19 +115,7 @@ function DemoContent({
       {data.projects.length === 0 ? (
         <EmptyState />
       ) : (
-        <section className="mt-8" aria-labelledby="demo-list-title">
-          <h2 className="text-lg font-semibold tracking-tight" id="demo-list-title">
-            已发布的 Demo
-          </h2>
-          <div className="mt-4">
-            <DemoList
-              apiUrl={apiUrl}
-              csrfToken={data.csrfToken}
-              demos={data.projects}
-              onDeleted={onDeleted}
-            />
-          </div>
-        </section>
+        <DemoBrowser apiUrl={apiUrl} data={data} onDeleted={onDeleted} />
       )}
     </>
   );
@@ -193,13 +185,22 @@ function EmptyState() {
   );
 }
 
-function ErrorState({ onRetry }: { onRetry: () => Promise<void> }) {
+function ErrorState({
+  onRetry,
+  hasPreviousData,
+}: {
+  onRetry: () => Promise<void>;
+  hasPreviousData: boolean;
+}) {
   return (
     <section
       className="mt-8 rounded-xl bg-rose-50 p-5 text-sm leading-6 text-rose-900"
       role="alert"
     >
       <h2 className="font-semibold">无法加载 Demo</h2>
+      {hasPreviousData ? (
+        <p className="mt-1">当前展示上次加载的数据；重试将保留搜索和分页。</p>
+      ) : null}
       <p className="mt-1">
         请重试；若问题持续，请携带诊断编号 DEMO_LIST_REQUEST_FAILED 联系管理员。
       </p>
