@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { CopyCodeButton } from "./copy-code-button";
+import { CopyProjectShareButton } from "./copy-project-share-button";
 import type { DemoSummary } from "./demo-list";
 
 export interface DemoHomepage {
@@ -11,7 +12,7 @@ export interface DemoHomepage {
   url: string | null;
 }
 
-export function DemoHomepageLink({ demo }: { demo: DemoSummary }) {
+export function DemoHomepageLink({ demo, apiUrl }: { demo: DemoSummary; apiUrl: string }) {
   const homepage = demo.homepage;
   if (!homepage?.url)
     return (
@@ -42,10 +43,11 @@ export function DemoHomepageLink({ demo }: { demo: DemoSummary }) {
       >
         {homepage.path}
       </a>
-      <CopyCodeButton compact label="复制首页" value={homepage.url} />
       {demo.accessMode === "password" ? (
-        <p className="mt-1 text-xs text-slate-500">分享密码请到详情获取</p>
-      ) : null}
+        <CopyProjectShareButton apiUrl={apiUrl} projectId={demo.projectId} url={homepage.url} />
+      ) : (
+        <CopyCodeButton compact label="复制首页" value={homepage.url} />
+      )}
     </div>
   );
 }

@@ -69,7 +69,13 @@ async function mockApp(page: Page, count = 23, clipboardFails = false) {
     await route.fulfill({ json: { status: "deleted" } });
   });
   await page.route("**/api/projects/abc12", (route) =>
-    route.fulfill({ json: { csrfToken: "test-only", project: projects[0], files } }),
+    route.fulfill({
+      json: {
+        csrfToken: "test-only",
+        project: { ...projects[0], passwordStatus: "available", accessPassword: "Abcd2345" },
+        files,
+      },
+    }),
   );
   await page.route("**/api/projects/abc12/homepage", async (route) => {
     expect(route.request().method()).toBe("PUT");
@@ -174,13 +180,17 @@ for (const fail of [false, true]) {
       "href",
       base.homepage.url,
     );
-    await row.getByRole("button", { name: "复制首页" }).click();
+    await row.getByRole("button", { name: "复制链接和密码" }).click();
     if (fail)
       await expect(row.getByRole("textbox", { name: "手动复制内容" })).toHaveValue(
-        base.homepage.url ?? "",
+        `链接：${base.homepage.url}\n密码：Abcd2345`,
       );
-    else await expect(page.locator("html")).toHaveAttribute("data-copied", base.homepage.url ?? "");
-    await expect(row.getByText("分享密码请到详情获取")).toBeVisible();
+    else
+      await expect(page.locator("html")).toHaveAttribute(
+        "data-copied",
+        `链接：${base.homepage.url}\n密码：Abcd2345`,
+      );
+    await expect(row.getByText("分享密码请到详情获取")).toHaveCount(0);
   });
 }
 

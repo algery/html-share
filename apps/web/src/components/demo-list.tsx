@@ -54,14 +54,19 @@ export function DemoList({ apiUrl, csrfToken, demos, onDeleted }: DemoListProps)
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white">
             {demos.map((demo) => (
-              <DemoRow demo={demo} key={demo.projectId} onDelete={setDeleteTarget} />
+              <DemoRow
+                apiUrl={apiUrl}
+                demo={demo}
+                key={demo.projectId}
+                onDelete={setDeleteTarget}
+              />
             ))}
           </tbody>
         </table>
       </div>
       <div className="grid gap-3 md:hidden">
         {demos.map((demo) => (
-          <DemoCard demo={demo} key={demo.projectId} onDelete={setDeleteTarget} />
+          <DemoCard apiUrl={apiUrl} demo={demo} key={demo.projectId} onDelete={setDeleteTarget} />
         ))}
       </div>
       {deleteTarget === null ? null : (
@@ -81,7 +86,15 @@ function Header({ children }: { children: string }) {
   return <th className="whitespace-nowrap px-4 py-3 font-medium">{children}</th>;
 }
 
-function DemoRow({ demo, onDelete }: { demo: DemoSummary; onDelete: (demo: DemoSummary) => void }) {
+function DemoRow({
+  demo,
+  onDelete,
+  apiUrl,
+}: {
+  demo: DemoSummary;
+  onDelete: (demo: DemoSummary) => void;
+  apiUrl: string;
+}) {
   return (
     <tr>
       <td className="min-w-60 px-4 py-3 font-medium">
@@ -91,7 +104,7 @@ function DemoRow({ demo, onDelete }: { demo: DemoSummary; onDelete: (demo: DemoS
         <p className="mt-1 font-mono text-xs text-slate-500">{demo.projectId}</p>
       </td>
       <td className="px-4 py-3">
-        <DemoHomepageLink demo={demo} />
+        <DemoHomepageLink apiUrl={apiUrl} demo={demo} />
       </td>
       <td className="px-4 py-3">
         <AccessModeBadge mode={demo.accessMode} />
@@ -113,9 +126,11 @@ function DemoRow({ demo, onDelete }: { demo: DemoSummary; onDelete: (demo: DemoS
 }
 
 function DemoCard({
+  apiUrl,
   demo,
   onDelete,
 }: {
+  apiUrl: string;
   demo: DemoSummary;
   onDelete: (demo: DemoSummary) => void;
 }) {
@@ -142,7 +157,7 @@ function DemoCard({
         <div className="col-span-2">
           <dt className="text-slate-500">首页链接</dt>
           <dd className="mt-1">
-            <DemoHomepageLink demo={demo} />
+            <DemoHomepageLink apiUrl={apiUrl} demo={demo} />
           </dd>
         </div>
       </dl>
