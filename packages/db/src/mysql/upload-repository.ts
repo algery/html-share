@@ -1,5 +1,6 @@
 import type { MysqlClient } from "./types.js";
 import { mysqlTransaction } from "./transaction.js";
+import { claimableUploadId } from "./upload-claim.js";
 import { publishedAccessResult, type PasswordCrypto } from "./password-upload-policy.js";
 import { type UploadRepository, type UploadTaskSummary, UploadError } from "@html-share/core";
 
@@ -7,7 +8,6 @@ import { UploadAction, UploadTaskStatus } from "../generated/prisma-mysql/client
 import {
   expireTask,
   expireUploadTasks,
-  PROCESSING_LEASE_MS,
   projectKey,
   toTaskStatus,
 } from "./upload-repository-maintenance.js";
@@ -133,14 +133,7 @@ export function createMysqlUploadRepository(
     async claimNextProcessingUpload(now) {
       const task = await mysqlTransaction(prisma, async (tx) => {
         await expireUploadTasks(tx, now);
-        const claimed = await tx.$queryRaw<{ id: string }[]>`
-          SELECT id FROM upload_tasks
-          WHERE status = 'PROCESSING' AND expires_at > ${now}
-            AND (claimed_at IS NULL OR claimed_at <= ${new Date(now.getTime() - PROCESSING_LEASE_MS)})
-          ORDER BY created_at ASC, id ASC
-          LIMIT 1 FOR UPDATE SKIP LOCKED
-        `;
-        const id = claimed[0]?.id;
+        const id = await claimableUploadId(tx, now);
         if (id === undefined) return null;
         await tx.uploadTask.update({ where: { id }, data: { claimedAt: now, updatedAt: now } });
         return tx.uploadTask.findUniqueOrThrow({
