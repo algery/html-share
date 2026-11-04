@@ -260,3 +260,7 @@ MCP_ENDPOINT=https://app.example.com/mcp APP_HOST=app.example.com MCP_TOKEN='...
 ```sh
 pnpm load:phase9:upload:local
 ```
+
+## PostgreSQL / MySQL 配置基础能力
+
+Phase 24 的双客户端、独立迁移、就绪与隔离验证工具见 [数据库配置基础能力](database-phase24.md)。当前业务服务仍使用 PostgreSQL，MySQL 业务启动明确拒绝至 Phase 25；不要把工具迁移成功当作存量数据已搬迁或业务切换已完成。

@@ -1,0 +1,8 @@
+model DatabaseIdentity {
+  id         Int      @id @default(1)
+  instanceId String   @unique @map("instance_id") @db.Char(36)
+  createdAt  DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("database_identity")
+}

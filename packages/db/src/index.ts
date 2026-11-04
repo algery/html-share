@@ -14,3 +14,5 @@ export { createOrphanSweepRepository, type ClaimedObjectSweep } from "./orphan-s
 export { createPasswordCleanupRepository } from "./password-cleanup-repository.js";
 
 export { createPasswordAccessRepository } from "./password-access-repository.js";
+export { createDatabaseClient, type DatabaseConnection } from "./database-client.js";
+export { checkDatabaseReadiness, DatabaseReadinessError } from "./database-readiness.js";

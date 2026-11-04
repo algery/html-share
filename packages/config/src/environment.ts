@@ -2,7 +2,10 @@ import { URL } from "node:url";
 
 import { z } from "zod";
 
+import { EnvironmentValidationError, readDatabaseEnv } from "./database-environment.js";
 import { validateObjectStorageEnvironment } from "./object-storage-environment.js";
+
+export { EnvironmentValidationError } from "./database-environment.js";
 
 type Environment = Record<string, string | undefined>;
 
@@ -42,7 +45,6 @@ const optionalNonEmpty = z.preprocess(
 );
 
 const infrastructureEnvironment = {
-  DATABASE_URL: z.url({ protocol: /^postgres(?:ql)?$/ }),
   OBJECT_STORAGE_ACCESS_KEY_ID: nonEmpty,
   OBJECT_STORAGE_ACCESS_KEY_SECRET: nonEmpty,
   OBJECT_STORAGE_BUCKET: nonEmpty,
@@ -183,17 +185,6 @@ const dingTalkSchema = z.discriminatedUnion("DINGTALK_AUTH_MODE", [
   }),
 ]);
 
-export class EnvironmentValidationError extends Error {
-  readonly variables: readonly string[];
-
-  constructor(variables: readonly string[]) {
-    const uniqueVariables = [...new Set(variables)].sort();
-    super(`Invalid environment variables: ${uniqueVariables.join(", ")}`);
-    this.name = "EnvironmentValidationError";
-    this.variables = uniqueVariables;
-  }
-}
-
 function parseEnvironment<T>(schema: z.ZodType<T>, environment: Environment): T {
   const result = schema.safeParse(environment);
   if (result.success) {
@@ -212,11 +203,33 @@ export function readWebEnv(environment: Environment) {
 }
 
 export function readServerEnv(environment: Environment) {
-  return parseEnvironment(serverSchema, environment);
+  return parseServiceEnvironment(serverSchema, environment);
 }
 
 export function readWorkerEnv(environment: Environment) {
-  return parseEnvironment(workerSchema, environment);
+  return parseServiceEnvironment(workerSchema, environment);
+}
+
+function parseServiceEnvironment<T>(schema: z.ZodType<T>, environment: Environment) {
+  const invalidVariables: string[] = [];
+  let service: T | undefined;
+  let database: ReturnType<typeof readDatabaseEnv> | undefined;
+  try {
+    service = parseEnvironment(schema, environment);
+  } catch (error) {
+    if (!(error instanceof EnvironmentValidationError)) throw error;
+    invalidVariables.push(...error.variables);
+  }
+  try {
+    database = readDatabaseEnv(environment);
+  } catch (error) {
+    if (!(error instanceof EnvironmentValidationError)) throw error;
+    invalidVariables.push(...error.variables);
+  }
+  if (service === undefined || database === undefined) {
+    throw new EnvironmentValidationError(invalidVariables);
+  }
+  return { ...service, ...database };
 }
 
 export function readDingTalkEnv(environment: Environment) {

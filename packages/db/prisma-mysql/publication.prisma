@@ -1,0 +1,234 @@
+model Tenant {
+  id                   String                @id @default(uuid()) @db.Char(36)
+  name                 String                @db.LongText
+  dingtalkAppKeyRef    String                @map("dingtalk_app_key_ref") @db.LongText
+  status               TenantStatus          @default(ACTIVE)
+  createdAt            DateTime              @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime              @updatedAt @map("updated_at") @db.DateTime(3)
+  users                User[]
+  demoProjects         DemoProject[]
+  passwordAccessGrants PasswordAccessGrant[]
+  appKeyDigest         Bytes?                @default(dbgenerated()) @map("app_key_digest") @ignore @db.Binary(32)
+
+  @@unique([appKeyDigest])
+  @@map("tenants")
+}
+
+model User {
+  id                 String             @id @default(uuid()) @db.Char(36)
+  tenantId           String             @map("tenant_id") @db.Char(36)
+  dingtalkUserId     String             @map("dingtalk_user_id") @db.LongText
+  displayName        String             @map("display_name") @db.LongText
+  status             UserStatus         @default(ACTIVE)
+  lastLoginAt        DateTime           @map("last_login_at") @db.DateTime(3)
+  createdAt          DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  accessSessions     AccessSession[]
+  mcpTokens          McpToken[]
+  demoProjects       DemoProject[]
+  uploadTasks        UploadTask[]
+  quotaReservations  QuotaReservation[]
+  dingtalkUserDigest Bytes?             @default(dbgenerated()) @map("dingtalk_user_digest") @ignore @db.Binary(32)
+
+  @@unique([tenantId, dingtalkUserDigest])
+  @@map("users")
+}
+
+model DemoProject {
+  id                   String                @id @default(uuid()) @db.Char(36)
+  tenantId             String                @map("tenant_id") @db.Char(36)
+  ownerUserId          String                @map("owner_user_id") @db.Char(36)
+  projectKey           String                @unique @map("project_key") @db.VarChar(5)
+  displayName          String                @map("display_name") @db.VarChar(80)
+  status               DemoProjectStatus     @default(PENDING)
+  accessMode           String                @default("organization") @map("access_mode") @db.LongText
+  homepagePath         String?               @map("homepage_path") @db.LongText
+  passwordHash         String?               @map("password_hash") @db.LongText
+  encryptedPassword    String?               @map("encrypted_password") @db.LongText
+  passwordVersion      Int                   @default(0) @map("password_version")
+  currentRevisionId    String?               @unique @map("current_revision_id") @db.Char(36)
+  fileCount            Int                   @default(0) @map("file_count")
+  totalSize            BigInt                @default(0) @map("total_size")
+  deletedAt            DateTime?             @map("deleted_at") @db.DateTime(3)
+  createdAt            DateTime              @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime              @updatedAt @map("updated_at") @db.DateTime(3)
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  owner                User                  @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  currentRevision      Revision?             @relation("CurrentRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
+  revisions            Revision[]            @relation("ProjectRevisions")
+  uploadTasks          UploadTask[]
+  fileObjects          FileObject[]
+  passwordAccessGrants PasswordAccessGrant[]
+
+  @@index([ownerUserId, status])
+  @@index([tenantId, status])
+  @@index([status, deletedAt])
+  @@map("demo_projects")
+}
+
+model Revision {
+  id                String         @id @default(uuid()) @db.Char(36)
+  tenantId          String         @map("tenant_id") @db.Char(36)
+  projectId         String         @map("project_id") @db.Char(36)
+  revisionNumber    Int            @map("revision_number")
+  status            RevisionStatus @default(PENDING)
+  fileCount         Int            @default(0) @map("file_count")
+  totalSize         BigInt         @default(0) @map("total_size")
+  cleanupAfter      DateTime?      @map("cleanup_after") @db.DateTime(3)
+  publishedAt       DateTime?      @map("published_at") @db.DateTime(3)
+  failedAt          DateTime?      @map("failed_at") @db.DateTime(3)
+  createdAt         DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+  project           DemoProject    @relation("ProjectRevisions", fields: [projectId], references: [id], onDelete: Cascade)
+  currentForProject DemoProject?   @relation("CurrentRevision")
+  files             FileObject[]
+  uploadTasks       UploadTask[]
+  uploadFiles       UploadFile[]
+
+  @@unique([projectId, revisionNumber])
+  @@index([tenantId, status])
+  @@map("revisions")
+}
+
+model UploadTask {
+  id                       String            @id @default(uuid()) @db.Char(36)
+  tenantId                 String            @map("tenant_id") @db.Char(36)
+  projectId                String            @map("project_id") @db.Char(36)
+  ownerUserId              String            @map("owner_user_id") @db.Char(36)
+  revisionId               String            @map("revision_id") @db.Char(36)
+  action                   UploadAction
+  status                   UploadTaskStatus  @default(PREPARED)
+  displayName              String            @map("display_name") @db.VarChar(80)
+  targetHtml               String            @map("target_html") @db.LongText
+  declaredFileCount        Int               @map("declared_file_count")
+  declaredTotalSize        BigInt            @map("declared_total_size")
+  declaredArchiveSize      BigInt?           @map("declared_archive_size")
+  manifestDigest           String            @map("manifest_digest") @db.VarChar(64)
+  riskAckDigest            String?           @map("risk_ack_digest") @db.VarChar(64)
+  requestedAccessMode      String?           @map("requested_access_mode") @db.LongText
+  regeneratePassword       Boolean           @default(false) @map("regenerate_password")
+  pendingAccessMode        String?           @map("pending_access_mode") @db.LongText
+  pendingPasswordHash      String?           @map("pending_password_hash") @db.LongText
+  pendingEncryptedPassword String?           @map("pending_encrypted_password") @db.LongText
+  pendingPasswordVersion   Int?              @map("pending_password_version")
+  encryptedPasswordResult  String?           @map("encrypted_password_result") @db.LongText
+  passwordResultExpiresAt  DateTime?         @map("password_result_expires_at") @db.DateTime(3)
+  clientRequestId          String            @map("client_request_id") @db.Char(36)
+  traceId                  String?           @map("trace_id") @db.VarChar(64)
+  temporaryObjectKey       String?           @map("temporary_object_key") @db.LongText
+  expiresAt                DateTime          @map("expires_at") @db.DateTime(3)
+  completedAt              DateTime?         @map("completed_at") @db.DateTime(3)
+  failedAt                 DateTime?         @map("failed_at") @db.DateTime(3)
+  failureCode              String?           @map("failure_code") @db.VarChar(80)
+  claimedAt                DateTime?         @map("claimed_at") @db.DateTime(3)
+  stagedObjectKeys         Json              @default("[]") @map("staged_object_keys")
+  temporaryCleanedAt       DateTime?         @map("temporary_cleaned_at") @db.DateTime(3)
+  createdAt                DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt                DateTime          @updatedAt @map("updated_at") @db.DateTime(3)
+  project                  DemoProject       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner                    User              @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  revision                 Revision          @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  quotaReservation         QuotaReservation?
+  uploadFiles              UploadFile[]
+  temporaryObjectKeyDigest Bytes?            @default(dbgenerated()) @map("temporary_object_key_digest") @ignore @db.Binary(32)
+  activeProjectId          String?           @default(dbgenerated()) @map("active_project_id") @ignore @db.Char(36)
+
+  @@unique([temporaryObjectKeyDigest])
+  @@unique([activeProjectId], map: "upload_tasks_one_active_task_per_project")
+  @@index([ownerUserId, clientRequestId, createdAt])
+  @@index([status, expiresAt])
+  @@index([projectId, status])
+  @@index([passwordResultExpiresAt])
+  @@map("upload_tasks")
+}
+
+model PasswordAccessGrant {
+  id              String      @id @default(uuid()) @db.Char(36)
+  tenantId        String      @map("tenant_id") @db.Char(36)
+  projectId       String      @map("project_id") @db.Char(36)
+  passwordVersion Int         @map("password_version")
+  grantHash       String      @map("grant_hash") @db.LongText
+  expiresAt       DateTime    @map("expires_at") @db.DateTime(3)
+  revokedAt       DateTime?   @map("revoked_at") @db.DateTime(3)
+  createdAt       DateTime    @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.DateTime(3)
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project         DemoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  grantHashDigest Bytes?      @default(dbgenerated()) @map("grant_hash_digest") @ignore @db.Binary(32)
+
+  @@unique([grantHashDigest])
+  @@index([tenantId, projectId, passwordVersion])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("password_access_grants")
+}
+
+model UploadFile {
+  id                 String                       @id @default(uuid()) @db.Char(36)
+  tenantId           String                       @map("tenant_id") @db.Char(36)
+  uploadTaskId       String                       @map("upload_task_id") @db.Char(36)
+  revisionId         String                       @map("revision_id") @db.Char(36)
+  relativePath       String                       @map("relative_path") @db.LongText
+  expectedSize       BigInt                       @map("expected_size")
+  expectedSha256     String                       @map("expected_sha256") @db.VarChar(64)
+  expectedContentMd5 String                       @map("expected_content_md5") @db.VarChar(24)
+  mimeType           String                       @map("mime_type") @db.VarChar(255)
+  storageKey         String                       @map("storage_key") @db.LongText
+  verificationStatus UploadFileVerificationStatus @default(PENDING) @map("verification_status")
+  verifiedAt         DateTime?                    @map("verified_at") @db.DateTime(3)
+  createdAt          DateTime                     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime                     @updatedAt @map("updated_at") @db.DateTime(3)
+  uploadTask         UploadTask                   @relation(fields: [uploadTaskId], references: [id], onDelete: Cascade)
+  revision           Revision                     @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  relativePathDigest Bytes?                       @default(dbgenerated()) @map("relative_path_digest") @ignore @db.Binary(32)
+  storageKeyDigest   Bytes?                       @default(dbgenerated()) @map("storage_key_digest") @ignore @db.Binary(32)
+
+  @@unique([uploadTaskId, relativePathDigest])
+  @@unique([storageKeyDigest])
+  @@index([tenantId, uploadTaskId, verificationStatus])
+  @@index([revisionId])
+  @@map("upload_files")
+}
+
+model FileObject {
+  id                 String      @id @default(uuid()) @db.Char(36)
+  tenantId           String      @map("tenant_id") @db.Char(36)
+  projectId          String      @map("project_id") @db.Char(36)
+  revisionId         String      @map("revision_id") @db.Char(36)
+  relativePath       String      @map("relative_path") @db.LongText
+  size               BigInt
+  contentHash        String      @map("content_hash") @db.VarChar(64)
+  mimeType           String      @map("mime_type") @db.VarChar(255)
+  storageKey         String      @map("storage_key") @db.LongText
+  createdAt          DateTime    @default(now()) @map("created_at") @db.DateTime(3)
+  revision           Revision    @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  project            DemoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  relativePathDigest Bytes?      @default(dbgenerated()) @map("relative_path_digest") @ignore @db.Binary(32)
+  storageKeyDigest   Bytes?      @default(dbgenerated()) @map("storage_key_digest") @ignore @db.Binary(32)
+
+  @@unique([projectId, revisionId, relativePathDigest])
+  @@unique([storageKeyDigest])
+  @@index([tenantId, projectId, revisionId])
+  @@map("file_objects")
+}
+
+model QuotaReservation {
+  id           String                 @id @default(uuid()) @db.Char(36)
+  tenantId     String                 @map("tenant_id") @db.Char(36)
+  userId       String                 @map("user_id") @db.Char(36)
+  uploadTaskId String                 @unique @map("upload_task_id") @db.Char(36)
+  projectDelta Int                    @map("project_delta")
+  storageBytes BigInt                 @map("storage_bytes")
+  status       QuotaReservationStatus @default(RESERVED)
+  expiresAt    DateTime               @map("expires_at") @db.DateTime(3)
+  settledAt    DateTime?              @map("settled_at") @db.DateTime(3)
+  releasedAt   DateTime?              @map("released_at") @db.DateTime(3)
+  createdAt    DateTime               @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime               @updatedAt @map("updated_at") @db.DateTime(3)
+  user         User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  uploadTask   UploadTask             @relation(fields: [uploadTaskId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, status, expiresAt])
+  @@map("quota_reservations")
+}

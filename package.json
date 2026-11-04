@@ -17,8 +17,8 @@
     "dev:apps": "pnpm build:packages && pnpm dev:apps:parallel",
     "dev:apps:dingtalk": "pnpm --filter './apps/**' run --parallel --stream --if-present dev:dingtalk",
     "dev:apps:parallel": "pnpm --filter './apps/**' run --parallel --stream --if-present dev",
-    "db:generate": "node --env-file=.env.example ./node_modules/prisma/build/index.js generate",
-    "db:migrate:deploy": "node --env-file=.env.example ./node_modules/prisma/build/index.js migrate deploy",
+    "db:generate": "node scripts/database-generate.mjs",
+    "db:migrate:deploy": "node --env-file=.env.example scripts/database-migrate.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "health": "node --env-file=.env.example scripts/health-check.mjs",
@@ -53,7 +53,11 @@
     "smoke:password-security": "node scripts/password-security-smoke.mjs",
     "smoke:password-proxy": "node scripts/password-proxy-smoke.mjs --exclusive-window",
     "smoke:password-image": "node scripts/password-image-smoke.mjs",
-    "smoke:password-main": "node scripts/password-main-smoke.mjs"
+    "smoke:password-main": "node scripts/password-main-smoke.mjs",
+    "db:schema:check": "node scripts/database-schema-check.mjs",
+    "db:smoke": "node scripts/database-smoke.mjs",
+    "db:test:integration": "node scripts/database-integration-check.mjs",
+    "db:upgrade:smoke": "node scripts/database-upgrade-smoke.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

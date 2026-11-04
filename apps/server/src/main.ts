@@ -35,6 +35,10 @@ function loadEnvironment() {
 }
 
 const environment = loadEnvironment();
+if (environment.server.DATABASE_PROVIDER === "mysql") {
+  console.error("DATABASE_PROVIDER: MySQL business repositories are unavailable until Phase 25");
+  process.exit(1);
+}
 const prisma = createPrismaClient(environment.server.DATABASE_URL);
 const storage = createObjectStore({
   accessKeyId: environment.server.OBJECT_STORAGE_ACCESS_KEY_ID,
