@@ -1,6 +1,6 @@
 # 数据库配置基础能力（Phase 24）
 
-本阶段提供 PostgreSQL / MySQL 配置解析、双客户端生成、独立迁移、连接就绪和隔离验证工具。普通业务仍使用 PostgreSQL；Server / Worker 收到 `DATABASE_PROVIDER=mysql` 时会在创建业务连接前明确退出，业务仓储在 Phase 25 接线。修改 env 不会自动迁移已有数据。
+本阶段提供 PostgreSQL / MySQL 配置解析、双客户端生成、独立迁移、连接就绪和隔离验证工具。Phase 24 当时保留 MySQL 业务启动拒绝；该限制已在 Phase 25 解除，当前业务接线与运行边界见 [Phase 25 指南](database-phase25.md)。修改 env 不会自动迁移已有数据。
 
 ## 配置与兼容
 

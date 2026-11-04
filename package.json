@@ -57,7 +57,8 @@
     "db:schema:check": "node scripts/database-schema-check.mjs",
     "db:smoke": "node scripts/database-smoke.mjs",
     "db:test:integration": "node scripts/database-integration-check.mjs",
-    "db:upgrade:smoke": "node scripts/database-upgrade-smoke.mjs"
+    "db:upgrade:smoke": "node scripts/database-upgrade-smoke.mjs",
+    "db:test:contract": "node scripts/database-contract-check.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

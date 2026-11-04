@@ -3,8 +3,8 @@ import { randomBytes, randomUUID } from "node:crypto";
 import * as core from "../packages/core/dist/index.js";
 import * as db from "../packages/db/dist/index.js";
 
-export async function createSmokeAuthorization({ appKey, check, prisma, states }) {
-  const authRepository = db.createAuthRepository(prisma);
+export async function createSmokeAuthorization({ appKey, check, prisma, states, repository }) {
+  const authRepository = repository ?? db.createAuthRepository(prisma);
   const sessions = core.createAuthSessionService({
     repository: {
       ...authRepository,

@@ -1,6 +1,33 @@
 import { createHash, randomUUID } from "node:crypto";
+import { createDatabaseClient } from "../packages/db/dist/index.js";
 import { directManifestDigest } from "./direct-upload-smoke-support.mjs";
 export function isolatedConfiguration() {
+  if (process.env.PHASE25_DATABASE_PROVIDER !== undefined) {
+    const provider = process.env.PHASE25_DATABASE_PROVIDER;
+    const databaseUrl = process.env.PHASE25_DATABASE_URL;
+    const endpoint = process.env.PHASE10_MINIO_ENDPOINT;
+    const url = new URL(databaseUrl ?? "invalid:");
+    if (
+      !["postgresql", "mysql"].includes(provider) ||
+      url.hostname !== "127.0.0.1" ||
+      url.pathname !== "/html_share_phase25_http" ||
+      url.port !== (provider === "mysql" ? "53319" : "55439") ||
+      !(provider === "mysql"
+        ? url.protocol === "mysql:"
+        : ["postgresql:", "postgres:"].includes(url.protocol)) ||
+      endpoint !== "http://127.0.0.1:59000"
+    ) {
+      throw new Error("Isolated Phase 25 HTTP databases and MinIO are required");
+    }
+    if (process.versions.node.split(".")[0] !== "24") throw new Error("Node.js 24 is required");
+    return {
+      databaseProvider: provider,
+      databaseUrl,
+      endpoint,
+      accessKeyId: "password_test",
+      accessKeySecret: "local-password-test-only",
+    };
+  }
   const databaseUrl = process.env.PHASE10_DATABASE_URL;
   const endpoint = process.env.PHASE10_MINIO_ENDPOINT;
   const expectedDatabase =
@@ -43,4 +70,11 @@ export function fixture(version, overrides = {}) {
       ...overrides,
     },
   };
+}
+
+export function createSmokeDatabase(config) {
+  return createDatabaseClient({
+    DATABASE_PROVIDER: config.databaseProvider ?? "postgresql",
+    DATABASE_URL: config.databaseUrl,
+  });
 }

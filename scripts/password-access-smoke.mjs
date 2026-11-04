@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHarness, isolatedConfiguration } from "./password-smoke-support.mjs";
 import { startPasswordHttps } from "./password-https-harness.mjs";
+import { anonymousPasswordResponse } from "./password-smoke-handoff.mjs";
 import {
   publishAccessFixture,
   responseCookies,
@@ -28,10 +29,11 @@ try {
   );
   const initialUsers = await h.prisma.user.count({ where: { tenantId: h.tenantId } });
   for (const method of ["GET", "HEAD"]) {
-    const response = await https.request(first.targetPath, {
+    let response = await https.request(first.targetPath, {
       method,
       headers: { "if-none-match": "*" },
     });
+    response = await anonymousPasswordResponse(h, https, response, first.targetPath, method, check);
     check(response.status === 302, "anonymous GET/HEAD requires password");
     check(response.headers.location.startsWith("/auth/password?"), "anonymous password entry");
     check(
@@ -184,7 +186,15 @@ try {
     access_mode: "organization",
   });
   check(disabled.result.access_mode === "organization", "password disabled atomically");
-  const organization = await https.request(first.targetPath, { headers: { cookie: resetCookie } });
+  let organization = await https.request(first.targetPath, { headers: { cookie: resetCookie } });
+  organization = await anonymousPasswordResponse(
+    h,
+    https,
+    organization,
+    first.targetPath,
+    "GET",
+    check,
+  );
   check(
     organization.status === 302 && organization.headers.location.startsWith("/auth/content-login?"),
     "disabled project requires organization authorization",

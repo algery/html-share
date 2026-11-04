@@ -104,6 +104,7 @@ describeDatabase("failed create metadata retention", () => {
       where: { id: revisionJob.id },
     });
     await cleanup.completeCleanupJob({
+      claimAttempt: revisionJob.attemptCount,
       id: revisionJob.id,
       kind: "revision",
       now: retentionAt,
@@ -185,6 +186,11 @@ async function completeAllClaimed(cleanup: ReturnType<typeof createCleanupReposi
   while (true) {
     const job = await cleanup.claimNextCleanupJob(now);
     if (job === null) return;
-    await cleanup.completeCleanupJob({ id: job.id, kind: job.kind, now });
+    await cleanup.completeCleanupJob({
+      id: job.id,
+      kind: job.kind,
+      now,
+      claimAttempt: job.attemptCount,
+    });
   }
 }

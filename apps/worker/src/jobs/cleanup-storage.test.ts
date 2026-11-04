@@ -68,7 +68,7 @@ class FakeRepository implements CleanupStorageRepository {
   async claimNextCleanupJob() {
     const job = this.job;
     this.job = null;
-    return job;
+    return job === null ? null : { ...job, attemptCount: 1 };
   }
 
   async completeCleanupJob(input: { id: string }) {

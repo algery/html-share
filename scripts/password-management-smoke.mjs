@@ -58,7 +58,8 @@ try {
     JSON.stringify({
       assertions,
       browsers: ["chromium", "webkit"],
-      realPostgreSql: true,
+      realPostgreSql: isolatedConfiguration().databaseProvider !== "mysql",
+      databaseProvider: isolatedConfiguration().databaseProvider ?? "postgresql",
       realMinio: true,
       realServer: true,
       realWeb: true,

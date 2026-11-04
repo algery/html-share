@@ -263,4 +263,4 @@ pnpm load:phase9:upload:local
 
 ## PostgreSQL / MySQL 配置基础能力
 
-Phase 24 的双客户端、独立迁移、就绪与隔离验证工具见 [数据库配置基础能力](database-phase24.md)。当前业务服务仍使用 PostgreSQL，MySQL 业务启动明确拒绝至 Phase 25；不要把工具迁移成功当作存量数据已搬迁或业务切换已完成。
+双客户端、独立迁移、TLS 与连接工具见 [数据库配置基础能力](database-phase24.md)。Phase 25 已接入两库业务仓储与启动前就绪检查，运行步骤、事务规则和强制双库契约入口见 [双数据库业务指南](database-phase25.md)，本地证据见 [验收记录](database-phase25-validation.md)。默认 Compose 仍使用 PostgreSQL；双库部署拓扑、固定镜像与一致性门禁在 Phase 26 交付。修改 env 不会搬迁存量数据。

@@ -1,11 +1,5 @@
 import { EnvironmentValidationError, readWorkerEnv } from "@html-share/config";
-import {
-  createCleanupRepository,
-  createOrphanSweepRepository,
-  createPasswordCleanupRepository,
-  createPrismaClient,
-  createUploadRepository,
-} from "@html-share/db";
+import { openDatabaseRepositories } from "@html-share/db";
 import { createObjectStore, observeObjectStoreActivity } from "@html-share/storage";
 import { createTelemetry, createTraceId, redactLogValue } from "@html-share/observability";
 
@@ -28,15 +22,14 @@ function loadEnvironment() {
 }
 
 const environment = loadEnvironment();
-if (environment.DATABASE_PROVIDER === "mysql") {
-  console.error("DATABASE_PROVIDER: MySQL business repositories are unavailable until Phase 25");
+const repositories = await openDatabaseRepositories(environment).catch(() => {
+  console.error("Database startup failed; check DATABASE_PROVIDER/DATABASE_URL and migrations");
   process.exit(1);
-}
-const prisma = createPrismaClient(environment.DATABASE_URL);
-const repository = createUploadRepository(prisma);
-const cleanupRepository = createCleanupRepository(prisma);
-const orphanSweepRepository = createOrphanSweepRepository(prisma);
-const passwordCleanupRepository = createPasswordCleanupRepository(prisma);
+});
+const repository = repositories.uploads;
+const cleanupRepository = repositories.cleanup;
+const orphanSweepRepository = repositories.orphanSweep;
+const passwordCleanupRepository = repositories.passwordCleanup;
 const observedStorage = observeObjectStoreActivity(
   createObjectStore({
     accessKeyId: environment.OBJECT_STORAGE_ACCESS_KEY_ID,
@@ -150,7 +143,8 @@ timer.unref();
 void runJobs();
 
 app.addHook("onClose", async () => {
-  await prisma.$disconnect();
+  clearInterval(timer);
+  await repositories.close();
 });
 
 try {
@@ -166,4 +160,5 @@ try {
       : "LISTEN_FAILED";
   app.log.error({ code }, "worker failed to start");
   process.exitCode = 1;
+  await app.close();
 }

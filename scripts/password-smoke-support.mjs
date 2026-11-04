@@ -8,6 +8,7 @@ import { createObjectStore, observeObjectStoreActivity } from "../packages/stora
 import { buildServerApp } from "../apps/server/dist/app.js";
 import { finalizeNextUpload } from "../apps/worker/dist/jobs/finalize-upload.js";
 import { createSmokeAuthorization } from "./password-smoke-auth.mjs";
+import { createSmokeDatabase } from "./password-smoke-fixture.mjs";
 const appRequire = createRequire(new URL("../apps/server/package.json", import.meta.url));
 const storageRequire = createRequire(new URL("../packages/storage/package.json", import.meta.url));
 const { Client, StreamableHTTPClientTransport } = await import(
@@ -18,9 +19,9 @@ const { S3Client, DeleteBucketCommand } = await import(
 );
 
 export { isolatedConfiguration, fixture } from "./password-smoke-fixture.mjs";
-
 export async function createHarness(config, check, options = {}) {
-  const prisma = db.createPrismaClient(config.databaseUrl);
+  const connection = createSmokeDatabase(config);
+  const prisma = connection.client;
   const bucket = `password-smoke-${randomUUID()}`;
   const storeConfig = { ...config, bucket, provider: "minio", region: "us-east-1" };
   const rawStorage = createObjectStore(storeConfig);
@@ -44,10 +45,11 @@ export async function createHarness(config, check, options = {}) {
       return rawCrypto.verify(...args);
     },
   };
-  const repository = db.createUploadRepository(prisma, {
+  const repositories = db.createDatabaseRepositories(connection, {
     passwordCrypto: crypto,
     passwordManagementCrypto: managementCrypto,
   });
+  const repository = repositories.uploads;
   const states = [];
   const clients = [];
   let tenantId;
@@ -123,19 +125,20 @@ export async function createHarness(config, check, options = {}) {
       check,
       prisma,
       states,
+      repository: repositories.auth,
     });
     const tokens = core.createMcpTokenService({
-      repository: db.createMcpTokenRepository(prisma),
+      repository: repositories.mcpTokens,
       hashSecret: randomBytes(32).toString("base64"),
     });
     const token = await tokens.createToken({ name: "Password smoke", user: session.user });
     const address = options.appUrl ?? "http://127.0.0.1:55100";
     const appWebUrl = options.appWebUrl ?? address;
     const demoUrl = options.demoUrl ?? "http://localhost:55100";
-    const projectReader = db.createProjectReader(prisma);
+    const projectReader = repositories.projects;
     const passwordManagement = core.createPasswordManagementService({
       passwordCrypto: managementCrypto,
-      repository: db.createPasswordManagementRepository(prisma),
+      repository: repositories.passwordManagement,
     });
     app = buildServerApp({
       appAuthUrl: address,
@@ -154,7 +157,7 @@ export async function createHarness(config, check, options = {}) {
         ? {
             passwordStateSecret: randomBytes(32).toString("base64"),
             passwordAccess: core.createPasswordAccessService({
-              repository: db.createPasswordAccessRepository(prisma),
+              repository: repositories.passwordAccess,
               passwordCrypto: crypto,
             }),
           }
@@ -163,7 +166,7 @@ export async function createHarness(config, check, options = {}) {
       passwordManagement,
       projectDeletion: core.createProjectDeletionService({
         administratorDingTalkUserIds: [],
-        repository: db.createProjectDeletionRepository(prisma),
+        repository: repositories.deletion,
       }),
       projectManagement: projectReader,
       projects: projectReader,

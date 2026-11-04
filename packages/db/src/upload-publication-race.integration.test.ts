@@ -109,7 +109,12 @@ describeDatabase("upload publication expiration fencing", () => {
       data: { attemptCount: 1, status: "RUNNING" },
       where: { id: cleanupJob.id },
     });
-    await cleanup.completeCleanupJob({ id: cleanupJob.id, kind: "upload", now: firstSweepAt });
+    await cleanup.completeCleanupJob({
+      id: cleanupJob.id,
+      kind: "upload",
+      now: firstSweepAt,
+      claimAttempt: 1,
+    });
     await expect(
       prisma.uploadTask.findUniqueOrThrow({ where: { id: fixture.uploadId } }),
     ).resolves.toMatchObject({ temporaryCleanedAt: firstSweepAt });

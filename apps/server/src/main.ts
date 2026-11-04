@@ -8,16 +8,7 @@ import {
   createPasswordAccessService,
   createPasswordManagementService,
 } from "@html-share/core";
-import {
-  createAuthRepository,
-  createPasswordAccessRepository,
-  createPasswordManagementRepository,
-  createMcpTokenRepository,
-  createProjectDeletionRepository,
-  createProjectReader,
-  createPrismaClient,
-  createUploadRepository,
-} from "@html-share/db";
+import { openDatabaseRepositories } from "@html-share/db";
 import { createLiveDingTalkClient, createSimulatorDingTalkClient } from "@html-share/dingtalk";
 import { createObjectStore } from "@html-share/storage";
 
@@ -35,11 +26,17 @@ function loadEnvironment() {
 }
 
 const environment = loadEnvironment();
-if (environment.server.DATABASE_PROVIDER === "mysql") {
-  console.error("DATABASE_PROVIDER: MySQL business repositories are unavailable until Phase 25");
+const passwordCrypto = createPasswordCrypto(environment.server.PASSWORD_RESULT_ENCRYPTION_KEY);
+const passwordManagementCrypto = createPasswordCrypto(
+  environment.server.PASSWORD_MANAGEMENT_ENCRYPTION_KEY,
+);
+const repositories = await openDatabaseRepositories(environment.server, {
+  passwordCrypto,
+  passwordManagementCrypto,
+}).catch(() => {
+  console.error("Database startup failed; check DATABASE_PROVIDER/DATABASE_URL and migrations");
   process.exit(1);
-}
-const prisma = createPrismaClient(environment.server.DATABASE_URL);
+});
 const storage = createObjectStore({
   accessKeyId: environment.server.OBJECT_STORAGE_ACCESS_KEY_ID,
   accessKeySecret: environment.server.OBJECT_STORAGE_ACCESS_KEY_SECRET,
@@ -60,23 +57,19 @@ const dingtalk =
         clientSecret: environment.dingtalk.DINGTALK_CLIENT_SECRET,
         externalAuthorizeUrl: environment.dingtalk.DINGTALK_EXTERNAL_AUTHORIZE_URL,
       });
-const projects = createProjectReader(prisma);
+const projects = repositories.projects;
 const projectDeletion = createProjectDeletionService({
   administratorDingTalkUserIds: readAdministratorIds(environment.server.ADMIN_DINGTALK_USER_IDS),
-  repository: createProjectDeletionRepository(prisma),
+  repository: repositories.deletion,
 });
-const passwordCrypto = createPasswordCrypto(environment.server.PASSWORD_RESULT_ENCRYPTION_KEY);
-const passwordManagementCrypto = createPasswordCrypto(
-  environment.server.PASSWORD_MANAGEMENT_ENCRYPTION_KEY,
-);
 const passwordManagement = createPasswordManagementService({
   passwordCrypto: passwordManagementCrypto,
-  repository: createPasswordManagementRepository(prisma),
+  repository: repositories.passwordManagement,
 });
 const app = buildServerApp({
   passwordStateSecret: environment.server.AUTH_STATE_SECRET,
   passwordAccess: createPasswordAccessService({
-    repository: createPasswordAccessRepository(prisma),
+    repository: repositories.passwordAccess,
     passwordCrypto,
   }),
   passwordManagement,
@@ -89,7 +82,7 @@ const app = buildServerApp({
   appHost: environment.server.APP_HOST,
   appWebUrl: environment.server.APP_WEB_URL,
   authSessions: createAuthSessionService({
-    repository: createAuthRepository(prisma),
+    repository: repositories.auth,
     stateSecret: environment.server.AUTH_STATE_SECRET,
     tenantAppKeyRef: environment.dingtalk.DINGTALK_APP_ID ?? "simulator-dingtalk-app",
   }),
@@ -105,7 +98,7 @@ const app = buildServerApp({
   dingtalk,
   mcpTokens: createMcpTokenService({
     hashSecret: environment.server.MCP_TOKEN_HASH_SECRET,
-    repository: createMcpTokenRepository(prisma),
+    repository: repositories.mcpTokens,
   }),
   projects,
   projectManagement: projects,
@@ -121,15 +114,12 @@ const app = buildServerApp({
   storage,
   trustProxy: environment.server.TRUSTED_PROXY_IPS ?? false,
   uploads: createUploadService({
-    repository: createUploadRepository(prisma, {
-      passwordCrypto,
-      passwordManagementCrypto,
-    }),
+    repository: repositories.uploads,
   }),
 });
 
 app.addHook("onClose", async () => {
-  await prisma.$disconnect();
+  await repositories.close();
 });
 
 try {
@@ -145,6 +135,7 @@ try {
       : "LISTEN_FAILED";
   app.log.error({ code }, "server failed to start");
   process.exitCode = 1;
+  await app.close();
 }
 
 function readAdministratorIds(value: string | undefined) {

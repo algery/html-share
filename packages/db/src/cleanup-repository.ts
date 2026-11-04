@@ -4,6 +4,7 @@ import { UPLOAD_CLEANUP_GRACE_MS } from "./upload-repository-maintenance.js";
 const CLEANUP_LEASE_MS = 10 * 60 * 1000;
 
 export interface ClaimedCleanupJob {
+  attemptCount: number;
   id: string;
   kind: "auth_state" | "project" | "revision" | "upload";
   objectKeys: string[];
@@ -47,16 +48,25 @@ export function createCleanupRepository(prisma: PrismaClient) {
       });
       if (claimed === null) return null;
       return {
+        attemptCount: claimed.attemptCount,
         id: claimed.id,
         kind: claimed.kind.toLowerCase() as ClaimedCleanupJob["kind"],
         objectKeys: readObjectKeys(claimed.objectKeys),
       };
     },
 
-    async completeCleanupJob(input: { id: string; kind: ClaimedCleanupJob["kind"]; now: Date }) {
+    async completeCleanupJob(input: {
+      id: string;
+      kind: ClaimedCleanupJob["kind"];
+      now: Date;
+      claimAttempt: number;
+    }) {
       await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM cleanup_jobs WHERE id = ${input.id}::uuid FOR UPDATE`;
         const job = await tx.cleanupJob.findUnique({ where: { id: input.id } });
-        if (job === null || job.status !== "RUNNING") return;
+        if (job === null || job.status !== "RUNNING" || job.attemptCount !== input.claimAttempt)
+          return;
+        if (job.kind.toLowerCase() !== input.kind) throw new Error("Cleanup claim kind mismatch");
         if (input.kind === "auth_state") {
           await tx.authState.deleteMany({
             where: { id: job.targetId, expiresAt: { lte: input.now } },
@@ -168,20 +178,29 @@ export function createCleanupRepository(prisma: PrismaClient) {
       return { pending: count("PENDING"), retrying: count("RETRY"), running: count("RUNNING") };
     },
 
-    async retryCleanupJob(input: { errorCode: string; id: string; now: Date }) {
-      const job = await prisma.cleanupJob.findUnique({ where: { id: input.id } });
-      if (job === null || job.status !== "RUNNING") return;
-      const delayMs = Math.min(
-        24 * 60 * 60 * 1000,
-        60_000 * 2 ** Math.min(job.attemptCount - 1, 10),
-      );
-      await prisma.cleanupJob.update({
-        data: {
-          lastError: input.errorCode.slice(0, 120),
-          runAfter: new Date(input.now.getTime() + delayMs),
-          status: "RETRY",
-        },
-        where: { id: input.id },
+    async retryCleanupJob(input: {
+      errorCode: string;
+      id: string;
+      now: Date;
+      claimAttempt: number;
+    }) {
+      await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM cleanup_jobs WHERE id = ${input.id}::uuid FOR UPDATE`;
+        const job = await tx.cleanupJob.findUnique({ where: { id: input.id } });
+        if (job === null || job.status !== "RUNNING" || job.attemptCount !== input.claimAttempt)
+          return;
+        const delayMs = Math.min(
+          24 * 60 * 60 * 1000,
+          60_000 * 2 ** Math.min(job.attemptCount - 1, 10),
+        );
+        await tx.cleanupJob.update({
+          data: {
+            lastError: input.errorCode.slice(0, 120),
+            runAfter: new Date(input.now.getTime() + delayMs),
+            status: "RETRY",
+          },
+          where: { id: input.id },
+        });
       });
     },
   };
