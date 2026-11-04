@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { writeFile } from "node:fs/promises";
 import { createHarness, isolatedConfiguration } from "./password-smoke-support.mjs";
 import { startPasswordHttps } from "./password-https-harness.mjs";
 import { anonymousPasswordResponse } from "./password-smoke-handoff.mjs";
@@ -107,14 +108,25 @@ try {
           "test",
           "tests/browser/password-access.spec.ts",
           "--workers=1",
+          ...(process.env.PHASE26_PASSWORD_BROWSER_REPORT
+            ? ["--reporter=./scripts/database-browser-reporter.mjs"]
+            : []),
         ],
         {
           env: {
             ...process.env,
             PASSWORD_BROWSER_DEMO_URL: "https://localhost:55443",
+            PASSWORD_BROWSER_APP_URL: new URL(h.mcpUrl).origin,
             PASSWORD_BROWSER_TARGET_PATH: first.targetPath,
             PASSWORD_BROWSER_PASSWORD: first.result.access_password,
             PASSWORD_BROWSER_OTHER_PATH: other.targetPath,
+            ...(process.env.PHASE26_PASSWORD_BROWSER_REPORT
+              ? {
+                  PLAYWRIGHT_JSON_OUTPUT_FILE: undefined,
+                  PLAYWRIGHT_JSON_OUTPUT_DIR: undefined,
+                  PLAYWRIGHT_JSON_OUTPUT_NAME: undefined,
+                }
+              : {}),
           },
           stdio: ["ignore", "pipe", "pipe"],
         },
@@ -125,6 +137,19 @@ try {
       child.once("error", reject);
       child.once("exit", (code) => resolve({ code, logs }));
     });
+    if (process.env.PHASE26_PASSWORD_BROWSER_REPORT) {
+      await writeFile(
+        process.env.PHASE26_PASSWORD_BROWSER_REPORT,
+        output.logs.split("\n").find((line) => {
+          try {
+            return JSON.parse(line).status === "database-password-browser-report";
+          } catch {
+            return false;
+          }
+        }) ?? "{}",
+        { mode: 0o600 },
+      );
+    }
     console.log(
       output.logs
         .replaceAll(first.result.access_password, "[REDACTED]")

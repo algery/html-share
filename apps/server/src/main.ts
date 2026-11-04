@@ -8,7 +8,7 @@ import {
   createPasswordAccessService,
   createPasswordManagementService,
 } from "@html-share/core";
-import { openDatabaseRepositories } from "@html-share/db";
+import { invalidateDatabaseDeploymentReceipt, openDatabaseRepositories } from "@html-share/db";
 import { createLiveDingTalkClient, createSimulatorDingTalkClient } from "@html-share/dingtalk";
 import { createObjectStore } from "@html-share/storage";
 
@@ -25,16 +25,36 @@ function loadEnvironment() {
   }
 }
 
+if (process.env["DATABASE_DEPLOYMENT_TARGET_FILE"] !== undefined) {
+  await invalidateDatabaseDeploymentReceipt({
+    targetFile: process.env["DATABASE_DEPLOYMENT_TARGET_FILE"],
+    role: "server",
+  }).catch(() => {
+    console.error("Database deployment approval failed; check shared target directory permissions");
+    process.exit(1);
+  });
+}
 const environment = loadEnvironment();
 const passwordCrypto = createPasswordCrypto(environment.server.PASSWORD_RESULT_ENCRYPTION_KEY);
 const passwordManagementCrypto = createPasswordCrypto(
   environment.server.PASSWORD_MANAGEMENT_ENCRYPTION_KEY,
 );
-const repositories = await openDatabaseRepositories(environment.server, {
-  passwordCrypto,
-  passwordManagementCrypto,
-}).catch(() => {
-  console.error("Database startup failed; check DATABASE_PROVIDER/DATABASE_URL and migrations");
+const repositories = await openDatabaseRepositories(
+  environment.server,
+  {
+    passwordCrypto,
+    passwordManagementCrypto,
+  },
+  environment.server.DATABASE_DEPLOYMENT_TARGET_FILE === undefined
+    ? undefined
+    : {
+        targetFile: environment.server.DATABASE_DEPLOYMENT_TARGET_FILE,
+        role: "server",
+      },
+).catch(() => {
+  console.error(
+    "Database startup failed; check DATABASE_PROVIDER/DATABASE_URL and migrations/deployment approval",
+  );
   process.exit(1);
 });
 const storage = createObjectStore({
@@ -67,6 +87,7 @@ const passwordManagement = createPasswordManagementService({
   repository: repositories.passwordManagement,
 });
 const app = buildServerApp({
+  readiness: repositories.readiness,
   passwordStateSecret: environment.server.AUTH_STATE_SECRET,
   passwordAccess: createPasswordAccessService({
     repository: repositories.passwordAccess,

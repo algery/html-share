@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { inspectContent, scanRoot } from "./secret-hygiene.mjs";
+import { inspectContent, inspectFileName, scanRoot } from "./secret-hygiene.mjs";
 
 const temporaryDirectories = [];
 
@@ -15,6 +15,14 @@ afterEach(async () => {
 });
 
 describe("secret hygiene", () => {
+  it("allows the two explicit database examples while rejecting other env files", () => {
+    expect(inspectFileName("/fixture/.env.mysql.example")).toBe(false);
+    expect(inspectFileName("/fixture/.env.example")).toBe(false);
+    expect(inspectFileName("/fixture/.env.mysql.local")).toBe(true);
+    expect(inspectFileName("/fixture/.env.other.example")).toBe(true);
+    expect(inspectContent("MYSQL_PASSWORD=unreviewed-sensitive-value")).toHaveLength(1);
+  });
+
   it("allows only the exact synthetic password key for its dedicated variable", () => {
     const example = Buffer.alloc(32, 1).toString("base64");
     expect(inspectContent(`PASSWORD_RESULT_ENCRYPTION_KEY=${example}`)).toEqual([]);

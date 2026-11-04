@@ -15,6 +15,19 @@ export { createPasswordCleanupRepository } from "./password-cleanup-repository.j
 
 export { createPasswordAccessRepository } from "./password-access-repository.js";
 export { createDatabaseClient, type DatabaseConnection } from "./database-client.js";
-export { checkDatabaseReadiness, DatabaseReadinessError } from "./database-readiness.js";
+export {
+  checkDatabaseReadiness,
+  assertSameDatabaseDeployment,
+  DatabaseReadinessError,
+  type DatabaseDeploymentIdentity,
+} from "./database-readiness.js";
+export { readRequiredDatabaseMigrations, type DatabaseMigration } from "./database-migrations.js";
 export { createDatabaseRepositories, type DatabaseRepositories } from "./database-repositories.js";
 export { openDatabaseRepositories } from "./database-startup.js";
+
+export {
+  joinDatabaseDeployment,
+  invalidateDatabaseDeploymentReceipt,
+  writeDatabaseDeploymentTarget,
+  type DatabaseDeploymentBarrier,
+} from "./database-deployment-barrier.js";

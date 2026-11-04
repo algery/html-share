@@ -5,8 +5,9 @@
 - 准备两个独立 HTTPS 域名：`APP_HOST` 与 `DEMO_HOST`，并把两者 A/AAAA 记录指向部署主机。Caddy 只有在 DNS 生效且 80/443 可达时才可签发证书。
 - 在钉钉开放平台同时登记两个 HTTPS 回调域名，轮换曾暴露的 Client Secret，并把新值只写入密钥系统。
 - 配置经过复核的 `ADMIN_DINGTALK_USER_IDS`。禁止使用页面自助提权。
-- PostgreSQL 与 OSS Bucket 必须是外部持久服务；Bucket 私有、仅授予最小读写权限，应用容器不保存业务数据。
-- `server` 不发布宿主机端口；只能由 Compose 内部的 Caddy 访问。这样启用 Fastify `trustProxy` 后，`X-Forwarded-For` 仅来自受信任网关，登录、MCP 和内容读取的 IP 限流不会把整个网关当成一个用户。
+- 所选 PostgreSQL 18 / MySQL 8.4 与对象存储 Bucket 必须使用持久服务；Bucket 私有、仅授予最小读写权限，应用容器不保存业务数据。数据库与对象存储 provider 独立配置，外部 OSS/R2 真实联调按 Phase 20 待办验收。
+- 独立 Caddy 部署的 `server` 不发布宿主机端口，只由内部 Caddy 访问；1Panel 部署仅发布 loopback 端口。Fastify `trustProxy` 仅信任已确认网关，登录、MCP 和内容读取的 IP 限流不会把整个网关当成一个用户。
+- 数据库迁移、目标批准及双方启动顺序统一按 [V1.9 部署指南](database-deployment.md) 执行。下文 V1.4/V1.5 章节保留字段升级与权限回退约束；当前版本启动同样必须执行新的双角色批准流程。
 
 ## 部署
 
@@ -22,7 +23,7 @@
 
 2. 把整个交付目录上传到服务器固定目录。核对 `SHA256SUMS` 后，在 1Panel「容器 → 镜像 → 导入」选择 `images.tar.gz`；若当前面板只接受 `.tar`，在服务器执行 `gzip -dk images.tar.gz` 后导入 `images.tar`，或直接执行 `docker load -i images.tar.gz`。
 3. 将交付目录内的 `production.env.example` 复制为 `.env`，替换所有示例值后执行 `chmod 600 .env`。本机构建配置只含浏览器公开值；数据库密码、钉钉 Client Secret、OSS Secret 和两个随机密钥只能写入服务器 `.env`，真实文件不得提交、打包或发送到聊天中。`.env` 的 `HTML_SHARE_IMAGE_TAG` 和 `HTML_SHARE_PLATFORM` 必须与 `manifest.txt` 完全一致。
-4. 1Panel 安装的 PostgreSQL 通过外部 Docker 网络与应用编排互通。正式环境固定使用 `HTML_SHARE_1PANEL_NETWORK=1panel-network`，`DATABASE_URL` 的主机固定为该网络内的数据库容器名 `1Panel-postgresql-vHO6`，端口使用容器端口 `5432`，不能填写 `localhost` 或 `127.0.0.1`。部署前执行 `docker network inspect 1panel-network`，并执行 `docker inspect 1Panel-postgresql-vHO6 --format '{{json .NetworkSettings.Networks}}'`，确认数据库容器已加入该网络。
+4. 所选 PostgreSQL 或 MySQL 通过外部 Docker 网络与应用编排互通。设置 `HTML_SHARE_1PANEL_NETWORK=1panel-network`（或实际已创建的网络名），provider 与 URL 协议匹配；URL 主机使用网络内实际数据库容器名，容器端口分别为 `5432` / `3306`，不能把宿主 localhost 当作数据库容器。部署前检查外部网络和数据库容器的网络归属，Server、Worker、迁移必须指向同一逻辑库。
 5. 1Panel 进入「容器 → 编排 → 创建编排 → 路径选择」，选择交付目录内的 `compose.yaml`。这是无 `build:` 的纯运行编排；`migrate`、`server`、`worker` 会同时加入项目内部 `application` 网络和外部 `1panel-network`，`web` 只加入 `application`。外部网络不存在时 Compose 会直接报错，不会悄悄创建一个同名隔离网络。`migrate` 正常状态是执行一次后 `Exited (0)`。宿主机端口转发可能从 `1panel-network` 网关进入 Server；本机生产实例实测网关为 `172.18.0.1`。因此 `.env` 使用 `TRUSTED_PROXY_IPS=127.0.0.1,172.18.0.1,172.31.240.0/24`，同时信任该精确网关和专用应用子网，不能扩大为整个共享 `172.18.0.0/16` 网络。
 6. `compose.yaml` 只把 `127.0.0.1:13000` 和 `127.0.0.1:13001` 发布给宿主机，不占用 OpenResty 的 80/443。若端口冲突，可同时修改 `.env` 的端口以及下述 OpenResty location 文件中的上游端口。
 7. 在 1Panel「网站」中创建两个反向代理站点并启用 HTTPS：管理域先指向 `http://127.0.0.1:13000`，内容域指向 `http://127.0.0.1:13001`。随后进入各站点「配置 → 资源」，管理域用交付目录内的 `app.locations.conf` 替换生成的 `location /`，内容域用 `demo.locations.conf` 替换。`X-Forwarded-Proto` 必须写在实际包含 `proxy_pass` 的每一个 `location` 内；只写在 `server` 层不可靠，因为 location 定义任意 `proxy_set_header` 后便不会继承 server 层的同类指令。保存前检查语法，再重载 OpenResty。
@@ -31,15 +32,15 @@
 
    ```sh
    curl -fsS http://127.0.0.1:13000/api/health
-   curl -fsS -H 'Host: app.example.com' http://127.0.0.1:13001/health/live
-   curl -fsS https://app.example.com/health/live
+   curl -fsS -H 'Host: app.example.com' http://127.0.0.1:13001/health/ready
+   curl -fsS https://app.example.com/health/ready
    curl -fsS -o /dev/null -w '%{http_code}\n' https://app.example.com/health/metrics
    curl -fsS -I https://demo.example.com/not-a-project/not-a-file
    ```
 
    前三个请求应成功，公开 metrics 必须返回 `404`，不存在的内容路径也应返回 `404`。在 1Panel 编排详情确认 `server`、`worker`、`web` 均为 healthy。
 
-10. 更新时先完整备份数据库和对象存储，再构建并上传新镜像包，把 `HTML_SHARE_IMAGE_TAG` 改成新版本号并在 1Panel 重建编排。回滚时切回上一个已导入的镜像标签；数据库 migration 只有确认向后兼容时才能回滚应用。
+10. 更新时备份数据库、对象存储和密码密钥，再上传新镜像包、更新 `HTML_SHARE_IMAGE_TAG`。先停止 Server/Worker，成功后以 `up -d --force-recreate --wait` 重建编排，确保初始化、迁移和新 nonce 批准重新执行；面板不能保证此顺序时，在交付目录执行部署指南的 CLI 两步命令。回滚使用已验证兼容标签，同样先停写并重新批准；不能只重启单个角色或沿用旧批准。
 
 ### 独立 Caddy
 
@@ -48,15 +49,16 @@
 
    ```sh
    docker compose --env-file /etc/html-share/production.env -f compose.production.yaml build
-   docker compose --env-file /etc/html-share/production.env -f compose.production.yaml up -d
+   docker compose --env-file /etc/html-share/production.env -f compose.production.yaml stop server worker
+   docker compose --env-file /etc/html-share/production.env -f compose.production.yaml up -d --force-recreate --wait
    docker compose --env-file /etc/html-share/production.env -f compose.production.yaml ps
    ```
 
 3. `migrate` 必须显示 `exited (0)`，其余服务必须 `healthy`。再验证：
 
    ```sh
-   curl -fsS https://$APP_HOST/health/live
-   docker compose --env-file /etc/html-share/production.env -f compose.production.yaml exec server node -e "fetch('http://127.0.0.1:3001/health/metrics').then(r=>r.text()).then(console.log)"
+   curl -fsS https://$APP_HOST/health/ready
+   docker compose --env-file /etc/html-share/production.env -f compose.production.yaml exec server node -e 'require("node:http").get("http://127.0.0.1:3001/health/metrics",{headers:{host:process.env.APP_HOST}},r=>{if(r.statusCode!==200){r.resume();process.exitCode=1;return}r.pipe(process.stdout)}).on("error",()=>process.exit(1))'
    curl -fsS -I https://$DEMO_HOST/not-a-project/not-a-file
    ```
 
@@ -182,7 +184,7 @@ pnpm smoke:password-security
 
 ## 备份、恢复与回滚
 
-1. 每日备份 PostgreSQL 并启用对象存储版本/跨区备份策略；恢复演练必须在隔离环境、隔离 Bucket 进行。
+1. 每日对所选 PostgreSQL / MySQL 做一致性备份，并备份两个密码密钥、启用对象存储版本/跨区备份策略；恢复演练必须在隔离数据库和隔离 Bucket 进行，步骤见双数据库部署指南。
 2. 恢复演练：从备份还原隔离数据库与对象，再运行 `pnpm db:migrate:deploy`，核对项目元数据、一个已授权内容读取、删除后 404 与清理队列。不要在生产执行 schema push 或破坏性迁移。
 3. 原子覆盖的数据库回归必须在隔离 PostgreSQL 中显式提供 `PHASE9_DATABASE_URL` 后运行 `pnpm test:phase9:atomic`。该用例会在 revision 切换处触发唯一约束失败，并验证此前文件写入、revision 更新、旧 revision 指针、任务与配额状态全部回滚；普通 CI 未提供此变量时会跳过，不可把跳过视为通过。
 4. 镜像回滚只允许回到已验证镜像标签；先暂停 `worker`，确认目标版本 migration 兼容后替换 `server`、`web`、`worker`，恢复 worker 并检查健康与积压。数据库 migration 不自动回滚。
@@ -263,4 +265,4 @@ pnpm load:phase9:upload:local
 
 ## PostgreSQL / MySQL 配置基础能力
 
-双客户端、独立迁移、TLS 与连接工具见 [数据库配置基础能力](database-phase24.md)。Phase 25 已接入两库业务仓储与启动前就绪检查，运行步骤、事务规则和强制双库契约入口见 [双数据库业务指南](database-phase25.md)，本地证据见 [验收记录](database-phase25-validation.md)。默认 Compose 仍使用 PostgreSQL；双库部署拓扑、固定镜像与一致性门禁在 Phase 26 交付。修改 env 不会搬迁存量数据。
+双客户端、独立迁移、TLS 与连接工具见 [数据库配置基础能力](database-phase24.md)，仓储事务规则见 [双数据库业务指南](database-phase25.md)。Phase 26 的双库拓扑、同镜像运行、nonce 双角色启动批准、SQL readiness、升级与备份恢复步骤见 [部署指南](database-deployment.md)，实际命令与完整矩阵结果见 [兼容验收记录](database-compatibility-evidence.md)。默认启动为 PostgreSQL，`pnpm stack:up --env-file=.env.mysql.example` 选择 MySQL；两个拓扑各保留独立数据卷。修改 env 不会搬迁存量数据。

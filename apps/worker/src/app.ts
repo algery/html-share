@@ -6,6 +6,7 @@ import type { ObjectStoreActivity } from "@html-share/storage";
 export interface WorkerAppOptions {
   cleanupMetrics?: () => Promise<{ pending: number; retrying: number; running: number }>;
   logger?: boolean;
+  readiness?: () => Promise<void>;
   objectStorageMetrics?: () => ObjectStoreActivity;
   telemetry?: Telemetry;
 }
@@ -23,6 +24,15 @@ export function buildWorkerApp(options: WorkerAppOptions = {}): FastifyInstance 
   });
 
   app.get("/health/live", () => LIVE_RESPONSE);
+  app.get("/health/ready", async (_request, reply) => {
+    try {
+      if (!options.readiness) throw new Error("Readiness is not configured");
+      await options.readiness();
+      return LIVE_RESPONSE;
+    } catch {
+      return reply.code(503).send({ service: "worker", status: "not_ready" });
+    }
+  });
   app.get("/health/metrics", async (_request, reply) => {
     if (options.cleanupMetrics === undefined)
       return reply.code(503).send({ error: "metrics_unavailable" });

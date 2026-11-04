@@ -8,7 +8,9 @@ import { createObjectStore, observeObjectStoreActivity } from "../packages/stora
 import { buildServerApp } from "../apps/server/dist/app.js";
 import { finalizeNextUpload } from "../apps/worker/dist/jobs/finalize-upload.js";
 import { createSmokeAuthorization } from "./password-smoke-auth.mjs";
+import { cleanupSmokeRows } from "./database-smoke-cleanup.mjs";
 import { createSmokeDatabase } from "./password-smoke-fixture.mjs";
+import { createSmokeReadiness } from "./database-smoke-readiness.mjs";
 const appRequire = createRequire(new URL("../apps/server/package.json", import.meta.url));
 const storageRequire = createRequire(new URL("../packages/storage/package.json", import.meta.url));
 const { Client, StreamableHTTPClientTransport } = await import(
@@ -55,6 +57,7 @@ export async function createHarness(config, check, options = {}) {
   let tenantId;
   let app;
   let bucketCreated = false;
+  let readiness;
   const contentActivity = { getObjectCalls: 0, bodyBytesRead: 0 };
   const trace = [];
   async function cleanup() {
@@ -86,23 +89,13 @@ export async function createHarness(config, check, options = {}) {
         }
       },
       async () => {
-        if (tenantId) {
-          const records = await Promise.all(
-            [prisma.demoProject, prisma.uploadTask, prisma.revision].map((model) =>
-              model.findMany({ where: { tenantId }, select: { id: true } }),
-            ),
-          );
-          await prisma.cleanupJob.deleteMany({
-            where: { targetId: { in: records.flat().map((x) => x.id) } },
-          });
-          await prisma.demoProject.deleteMany({ where: { tenantId } });
-          await prisma.user.deleteMany({ where: { tenantId } });
-          await prisma.tenant.delete({ where: { id: tenantId } });
-        }
-        await prisma.authState.deleteMany({ where: { stateDigest: { in: states } } });
+        await cleanupSmokeRows(prisma, tenantId, states);
       },
       async () => {
         await prisma.$disconnect();
+      },
+      async () => {
+        await readiness?.cleanup();
       },
     ]) {
       try {
@@ -114,6 +107,7 @@ export async function createHarness(config, check, options = {}) {
     if (errors.length) throw new Error(errors.join("; "));
   }
   try {
+    if (options.productionReadiness) readiness = await createSmokeReadiness(connection);
     await rawStorage.ensurePrivateBucket();
     bucketCreated = true;
     const appKey = `password-smoke-${randomUUID()}`;
@@ -152,6 +146,7 @@ export async function createHarness(config, check, options = {}) {
       authSessions: sessions,
       dingtalk: createSimulatorDingTalkClient(),
       logger: options.logger ?? false,
+      readiness: readiness?.serverReadiness,
       trustProxy: ["127.0.0.1"],
       ...(options.passwordAccess
         ? {
@@ -258,6 +253,8 @@ export async function createHarness(config, check, options = {}) {
     }
     return {
       app,
+      workerReadiness: readiness?.workerReadiness,
+      readinessEvidence: readiness?.snapshot,
       appCookie: `html_share_app_session=${appAuthorization.token}`,
       appCsrfToken: sessions.createCsrfToken({
         audience: "app",
@@ -274,6 +271,7 @@ export async function createHarness(config, check, options = {}) {
       mcpToken: token.token,
       finalize,
       prisma,
+      repositories,
       read,
       publicationMetrics,
       trace,

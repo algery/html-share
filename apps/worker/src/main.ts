@@ -1,5 +1,5 @@
 import { EnvironmentValidationError, readWorkerEnv } from "@html-share/config";
-import { openDatabaseRepositories } from "@html-share/db";
+import { invalidateDatabaseDeploymentReceipt, openDatabaseRepositories } from "@html-share/db";
 import { createObjectStore, observeObjectStoreActivity } from "@html-share/storage";
 import { createTelemetry, createTraceId, redactLogValue } from "@html-share/observability";
 
@@ -21,9 +21,29 @@ function loadEnvironment() {
   }
 }
 
+if (process.env["DATABASE_DEPLOYMENT_TARGET_FILE"] !== undefined) {
+  await invalidateDatabaseDeploymentReceipt({
+    targetFile: process.env["DATABASE_DEPLOYMENT_TARGET_FILE"],
+    role: "worker",
+  }).catch(() => {
+    console.error("Database deployment approval failed; check shared target directory permissions");
+    process.exit(1);
+  });
+}
 const environment = loadEnvironment();
-const repositories = await openDatabaseRepositories(environment).catch(() => {
-  console.error("Database startup failed; check DATABASE_PROVIDER/DATABASE_URL and migrations");
+const repositories = await openDatabaseRepositories(
+  environment,
+  {},
+  environment.DATABASE_DEPLOYMENT_TARGET_FILE === undefined
+    ? undefined
+    : {
+        targetFile: environment.DATABASE_DEPLOYMENT_TARGET_FILE,
+        role: "worker",
+      },
+).catch(() => {
+  console.error(
+    "Database startup failed; check DATABASE_PROVIDER/DATABASE_URL and migrations/deployment approval",
+  );
   process.exit(1);
 });
 const repository = repositories.uploads;
@@ -46,6 +66,7 @@ const observedStorage = observeObjectStoreActivity(
 const storage = observedStorage.storage;
 const telemetry = createTelemetry();
 const app = buildWorkerApp({
+  readiness: repositories.readiness,
   cleanupMetrics: () => cleanupRepository.getCleanupBacklog(),
   objectStorageMetrics: observedStorage.snapshot,
   telemetry,
@@ -57,6 +78,7 @@ const runJobs = async () => {
   if (running) return;
   running = true;
   try {
+    await repositories.readiness();
     await runMeasured("password_cleanup", async () => ({
       result: await runPasswordAccessCleanup({ repository: passwordCleanupRepository }),
     }));

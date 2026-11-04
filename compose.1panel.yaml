@@ -8,6 +8,8 @@ x-server-environment: &server-environment
   APP_HOST: ${APP_HOST:?APP_HOST is required}
   APP_WEB_URL: ${APP_WEB_URL:?APP_WEB_URL is required}
   AUTH_STATE_SECRET: ${AUTH_STATE_SECRET:?AUTH_STATE_SECRET is required}
+  DATABASE_DEPLOYMENT_TARGET_FILE: /deployment-target/target.json
+  DATABASE_PROVIDER: ${DATABASE_PROVIDER-postgresql}
   DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
   DEMO_AUTH_URL: ${DEMO_AUTH_URL:?DEMO_AUTH_URL is required}
   DEMO_HOST: ${DEMO_HOST:?DEMO_HOST is required}
@@ -51,10 +53,29 @@ x-service-defaults: &service-defaults
       max-file: "3"
 
 services:
+  deployment-init:
+    image: html-share-server:${HTML_SHARE_IMAGE_TAG:-local}
+    platform: ${HTML_SHARE_PLATFORM:-linux/amd64}
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /deployment-target && chown node:node /deployment-target"]
+    restart: "no"
+    read_only: true
+    network_mode: none
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN"]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - deployment-targets:/deployment-target
+
   migrate:
     image: html-share-server:${HTML_SHARE_IMAGE_TAG:-local}
     platform: ${HTML_SHARE_PLATFORM:-linux/amd64}
-    command: ["sh", "-c", "cd /workspace && pnpm db:migrate:deploy"]
+    command:
+      [
+        "sh",
+        "-c",
+        "cd /workspace && pnpm db:migrate:deploy && node scripts/database-deployment-preflight.mjs --write-target=/deployment-target/target.json",
+      ]
     environment: *server-environment
     restart: "no"
     read_only: true
@@ -62,6 +83,11 @@ services:
     cap_drop: ["ALL"]
     tmpfs: ["/tmp:rw,nosuid,nodev,size=64m"]
     networks: [application, 1panel-network]
+    depends_on:
+      deployment-init:
+        condition: service_completed_successfully
+    volumes:
+      - deployment-targets:/deployment-target
 
   server:
     <<: *service-defaults
@@ -83,13 +109,16 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3001/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+          "require('node:http').get('http://127.0.0.1:3001/health/ready',{headers:{host:process.env.APP_HOST}},r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))",
         ]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
     networks: [application, 1panel-network]
+
+    volumes:
+      - deployment-targets:/deployment-target
 
   worker:
     <<: *service-defaults
@@ -99,6 +128,8 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
+      DATABASE_DEPLOYMENT_TARGET_FILE: /deployment-target/target.json
+      DATABASE_PROVIDER: ${DATABASE_PROVIDER-postgresql}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       OBJECT_STORAGE_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY_ID:?OBJECT_STORAGE_ACCESS_KEY_ID is required}
       OBJECT_STORAGE_ACCESS_KEY_SECRET: ${OBJECT_STORAGE_ACCESS_KEY_SECRET:?OBJECT_STORAGE_ACCESS_KEY_SECRET is required}
@@ -121,7 +152,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3002/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+          "fetch('http://127.0.0.1:3002/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
         ]
       interval: 15s
       timeout: 5s
@@ -129,7 +160,13 @@ services:
       start_period: 20s
     networks: [application, 1panel-network]
 
+    volumes:
+      - deployment-targets:/deployment-target
+
   web:
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     <<: *service-defaults
     image: html-share-web:${HTML_SHARE_IMAGE_TAG:-local}
     platform: ${HTML_SHARE_PLATFORM:-linux/amd64}
@@ -161,3 +198,6 @@ networks:
   1panel-network:
     external: true
     name: ${HTML_SHARE_1PANEL_NETWORK:-1panel-network}
+
+volumes:
+  deployment-targets:

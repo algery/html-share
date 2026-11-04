@@ -7,6 +7,7 @@ function required(name: string) {
 }
 
 const baseUrl = required("PASSWORD_BROWSER_DEMO_URL");
+const appUrl = required("PASSWORD_BROWSER_APP_URL");
 const targetPath = required("PASSWORD_BROWSER_TARGET_PATH");
 const password = required("PASSWORD_BROWSER_PASSWORD");
 const otherPath = required("PASSWORD_BROWSER_OTHER_PATH");
@@ -151,7 +152,35 @@ test("真实密码粘贴模拟与回车提交仅请求一次，子资源和同�
     maxRedirects: 0,
   });
   expect(other.status()).toBe(302);
-  expect(other.headers()["location"]).toContain("/auth/password?");
+  expect(await other.body()).toHaveLength(0);
+  expect(other.headers()["etag"]).toBeUndefined();
+  const start = new URL(other.headers()["location"] ?? "");
+  expect(start.origin).toBe(appUrl);
+  expect(start.pathname).toBe("/auth/session-handoff/start");
+  const probe = await context.request.get(start.toString(), { maxRedirects: 0 });
+  expect(probe.status()).toBe(302);
+  expect(await probe.body()).toHaveLength(0);
+  const completion = new URL(probe.headers()["location"] ?? "");
+  expect(completion.origin).toBe(baseUrl);
+  expect(completion.searchParams.has("ticket")).toBe(false);
+  const completed = await context.request.get(completion.toString(), { maxRedirects: 0 });
+  expect(completed.status()).toBe(302);
+  expect(await completed.body()).toHaveLength(0);
+  const returned = new URL(completed.headers()["location"] ?? "", baseUrl);
+  expect(returned.origin).toBe(baseUrl);
+  expect(returned.pathname + returned.search).toBe(otherPath);
+  const denied = await context.request.get(returned.toString(), { maxRedirects: 0 });
+  expect(denied.status()).toBe(302);
+  expect(await denied.body()).toHaveLength(0);
+  expect(denied.headers()["etag"]).toBeUndefined();
+  const passwordEntry = new URL(denied.headers()["location"] ?? "", baseUrl);
+  expect(passwordEntry.origin).toBe(baseUrl);
+  expect(passwordEntry.pathname).toBe("/auth/password");
+  expect(passwordEntry.searchParams.get("return_path")).toBe(otherPath);
+  const deniedPage = await context.request.get(passwordEntry.toString(), { maxRedirects: 0 });
+  expect(deniedPage.status()).toBe(200);
+  expect(await deniedPage.text()).toContain("此链接已开启密码访问");
+  expect(await deniedPage.text()).not.toContain("Protected fixture");
   for (const path of ["/api/projects", "/api/tokens", "/auth/current"])
     expect((await context.request.get(new URL(path, baseUrl).toString())).status()).toBe(404);
   expect(

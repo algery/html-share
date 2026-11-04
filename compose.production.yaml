@@ -1,17 +1,39 @@
 name: html-share-production
 
 services:
+  deployment-init:
+    build:
+      context: .
+      target: server
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /deployment-target && chown node:node /deployment-target"]
+    restart: "no"
+    read_only: true
+    network_mode: none
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN"]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - deployment-targets:/deployment-target
+
   migrate:
     build:
       context: .
       target: server
-    command: ["sh", "-c", "cd /workspace && pnpm db:migrate:deploy"]
+    command:
+      [
+        "sh",
+        "-c",
+        "cd /workspace && pnpm db:migrate:deploy && node scripts/database-deployment-preflight.mjs --write-target=/deployment-target/target.json",
+      ]
     environment: &server-environment
       ADMIN_DINGTALK_USER_IDS: ${ADMIN_DINGTALK_USER_IDS:?ADMIN_DINGTALK_USER_IDS is required}
       APP_AUTH_URL: ${APP_AUTH_URL:?APP_AUTH_URL is required}
       APP_HOST: ${APP_HOST:?APP_HOST is required}
       APP_WEB_URL: ${APP_WEB_URL:?APP_WEB_URL is required}
       AUTH_STATE_SECRET: ${AUTH_STATE_SECRET:?AUTH_STATE_SECRET is required}
+      DATABASE_DEPLOYMENT_TARGET_FILE: /deployment-target/target.json
+      DATABASE_PROVIDER: ${DATABASE_PROVIDER-postgresql}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       DEMO_AUTH_URL: ${DEMO_AUTH_URL:?DEMO_AUTH_URL is required}
       DEMO_HOST: ${DEMO_HOST:?DEMO_HOST is required}
@@ -45,6 +67,11 @@ services:
     read_only: true
     tmpfs: ["/tmp"]
     networks: [application]
+    depends_on:
+      deployment-init:
+        condition: service_completed_successfully
+    volumes:
+      - deployment-targets:/deployment-target
 
   server:
     build:
@@ -67,13 +94,16 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3001/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+          "require('node:http').get('http://127.0.0.1:3001/health/ready',{headers:{host:process.env.APP_HOST}},r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))",
         ]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
     networks: [application]
+
+    volumes:
+      - deployment-targets:/deployment-target
 
   worker:
     build:
@@ -83,6 +113,8 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
+      DATABASE_DEPLOYMENT_TARGET_FILE: /deployment-target/target.json
+      DATABASE_PROVIDER: ${DATABASE_PROVIDER-postgresql}
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
       OBJECT_STORAGE_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY_ID:?OBJECT_STORAGE_ACCESS_KEY_ID is required}
       OBJECT_STORAGE_ACCESS_KEY_SECRET: ${OBJECT_STORAGE_ACCESS_KEY_SECRET:?OBJECT_STORAGE_ACCESS_KEY_SECRET is required}
@@ -107,7 +139,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3002/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+          "fetch('http://127.0.0.1:3002/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
         ]
       interval: 15s
       timeout: 5s
@@ -115,7 +147,13 @@ services:
       start_period: 20s
     networks: [application]
 
+    volumes:
+      - deployment-targets:/deployment-target
+
   web:
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     build:
       context: .
       target: web
@@ -154,7 +192,7 @@ services:
     environment:
       APP_HOST: ${APP_HOST:?APP_HOST is required}
       DEMO_HOST: ${DEMO_HOST:?DEMO_HOST is required}
-    ports: ["80:80", "443:443"]
+    ports: ["${HTTP_PORT:-80}:80", "${HTTPS_PORT:-443}:443"]
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -166,7 +204,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          'curl -kfsS --resolve "$${APP_HOST}:443:127.0.0.1" "https://$${APP_HOST}/health/live" >/dev/null',
+          'curl -kfsS --resolve "$${APP_HOST}:443:127.0.0.1" "https://$${APP_HOST}/health/ready" >/dev/null',
         ]
       interval: 15s
       timeout: 5s
@@ -183,6 +221,7 @@ services:
         ipv4_address: 172.30.0.10
 
 volumes:
+  deployment-targets:
   caddy-data:
   caddy-config:
 

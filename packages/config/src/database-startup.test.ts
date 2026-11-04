@@ -28,7 +28,7 @@ describe("Database application startup boundary", () => {
       expect(result.error).toBeUndefined();
       expect(result.status).toBe(1);
       expect(result.stderr.trim()).toBe(
-        "Database startup failed; check DATABASE_PROVIDER/DATABASE_URL and migrations",
+        "Database startup failed; check DATABASE_PROVIDER/DATABASE_URL and migrations/deployment approval",
       );
       expect(result.stdout).toBe("");
       expect(`${result.stderr}${result.stdout}`).not.toContain("startup-secret");

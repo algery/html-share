@@ -28,6 +28,7 @@ tmp/
 .env
 .env.*
 !.env.example
+!.env.mysql.example
 *.crt
 *.jks
 *.key
@@ -41,6 +42,7 @@ secrets/
 data/
 minio-data/
 postgres-data/
+mysql-data/
 
 # Editor and operating-system files
 .DS_Store

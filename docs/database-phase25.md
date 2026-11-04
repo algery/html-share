@@ -15,7 +15,7 @@ DATABASE_PROVIDER=mysql DATABASE_URL="$MYSQL_DATABASE_URL" pnpm db:smoke
 
 运行 Server / Worker 时，给两个进程注入相同的 provider 和目标库，以及既有对象存储、认证、独立密码密钥等配置，再分别运行 `pnpm --filter @html-share/server start` 与 `pnpm --filter @html-share/worker start`。PostgreSQL 使用 `DATABASE_PROVIDER=postgresql` 和对应连接串，执行同样的迁移、检查和启动步骤。双客户端来自同一次构建，业务 API、Web、MCP 参数和 Demo URL 无数据库分支。
 
-这只完成业务仓储与本地验证。默认 Compose 仍沿用 PostgreSQL；双库 Compose、同一 Docker 镜像 digest 验证、部署进程目标一致性预检及完整容量矩阵在 Phase 26 交付。不要直接用当前默认 Compose 覆盖为 MySQL 部署。
+本页记录 Phase 25 的仓储交付。Phase 26 已增加双库 Compose、镜像与部署批准门禁；当前启动方式见 [部署指南](database-deployment.md)，完整矩阵验收状态见 [兼容证据](database-compatibility-evidence.md)。默认启动仍为 PostgreSQL，MySQL 通过独立拓扑启动。
 
 ## 事务与后台行为
 

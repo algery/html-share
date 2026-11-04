@@ -73,7 +73,7 @@ if [[ ! "${IMAGE_TAG}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]]; then
 fi
 if [[ ! "${DATABASE_HOST}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || [[ "${DATABASE_HOST}" == "localhost" ]] || [[ "${DATABASE_HOST}" == "127.0.0.1" ]]; then
   echo "Invalid HTML_SHARE_DATABASE_HOST: ${DATABASE_HOST}" >&2
-  echo "Use the PostgreSQL container name resolvable on the external Docker network." >&2
+  echo "Use the database container name resolvable on the external Docker network." >&2
   exit 1
 fi
 
@@ -130,7 +130,13 @@ for image in "${IMAGES[@]}"; do
   fi
 
   docker run --rm --platform "${TARGET_PLATFORM}" --entrypoint sh "${image}" -c \
-    'if [ -d /workspace ]; then scan_root=/workspace; elif [ -d /app ]; then scan_root=/app; else exit 1; fi; test -z "$(find "$scan_root" -path "*/node_modules" -prune -o -type f \( -name ".env" -o -name ".env.*" -o -name "*.pem" -o -name "*.key" -o -name "*.p12" -o -name "*.pfx" -o -name "credentials*" \) ! -name ".env.example" -print -quit)" && for path in "$scan_root"/apps/server/dist "$scan_root"/apps/worker/dist "$scan_root"/apps/web/server.js "$scan_root"/apps/web/.next "$scan_root"/apps/web/public "$scan_root"/packages/*/dist "$scan_root"/packages/db/src/generated; do if [ -e "$path" ] && grep -R -l -m1 "/Users/\|sk-ant-\|sk-proj-\|ANTHROPIC_API_KEY\|OPENAI_API_KEY\|BEGIN.*PRIVATE KEY" "$path" >/dev/null 2>&1; then exit 1; fi; done'
+    'if [ -d /workspace ]; then scan_root=/workspace; elif [ -d /app ]; then scan_root=/app; else exit 1; fi; test -z "$(find "$scan_root" -path "*/node_modules" -prune -o -type f \( -name ".env" -o -name ".env.*" -o -name "*.pem" -o -name "*.key" -o -name "*.p12" -o -name "*.pfx" -o -name "credentials*" \) ! -name ".env.example" ! -name ".env.mysql.example" -print -quit)" && for path in "$scan_root"/apps/server/dist "$scan_root"/apps/worker/dist "$scan_root"/apps/web/server.js "$scan_root"/apps/web/.next "$scan_root"/apps/web/public "$scan_root"/packages/*/dist "$scan_root"/packages/db/src/generated; do if [ -e "$path" ] && grep -R -l -m1 "/Users/\|sk-ant-\|sk-proj-\|ANTHROPIC_API_KEY\|OPENAI_API_KEY\|BEGIN.*PRIVATE KEY" "$path" >/dev/null 2>&1; then exit 1; fi; done'
+done
+
+# Database support is independent of deployment env and must survive packaging.
+for image in "${SERVER_IMAGE}" "${WORKER_IMAGE}"; do
+  docker run --rm --platform "${TARGET_PLATFORM}" --entrypoint sh "${image}" -c \
+    'test -f /workspace/packages/db/src/generated/prisma/client.ts && test -f /workspace/packages/db/src/generated/prisma-mysql/client.ts && test -d /workspace/packages/db/prisma/migrations && test -d /workspace/packages/db/prisma-mysql/migrations && test -f /workspace/scripts/database-deployment-preflight.mjs'
 done
 
 PACKAGE_NAME="html-share-${IMAGE_TAG}-${EXPECTED_ARCH}"
@@ -181,6 +187,7 @@ fi
 {
   echo "platform=${TARGET_PLATFORM}"
   echo "database_host=${DATABASE_HOST}"
+  echo "database_providers=postgresql,mysql"
   for image in "${IMAGES[@]}"; do
     docker image inspect --format 'image={{index .RepoTags 0}} id={{.Id}} os={{.Os}} arch={{.Architecture}}' "${image}"
   done

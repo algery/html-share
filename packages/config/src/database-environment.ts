@@ -1,9 +1,11 @@
+import { isAbsolute } from "node:path";
 import { URL } from "node:url";
 
 export type DatabaseProvider = "postgresql" | "mysql";
 export interface DatabaseEnvironment {
   DATABASE_PROVIDER: DatabaseProvider;
   DATABASE_URL: string;
+  DATABASE_DEPLOYMENT_TARGET_FILE?: string;
 }
 
 export class EnvironmentValidationError extends Error {
@@ -25,6 +27,10 @@ export function readDatabaseEnv(
   const provider = environment["DATABASE_PROVIDER"] ?? "postgresql";
   const databaseUrl = environment["DATABASE_URL"];
   const invalidVariables: string[] = [];
+  const targetFile = environment["DATABASE_DEPLOYMENT_TARGET_FILE"];
+  if (targetFile !== undefined && (!isAbsolute(targetFile) || targetFile.includes("\0"))) {
+    invalidVariables.push("DATABASE_DEPLOYMENT_TARGET_FILE");
+  }
   if (provider !== "postgresql" && provider !== "mysql") {
     invalidVariables.push("DATABASE_PROVIDER");
   }
@@ -61,5 +67,9 @@ export function readDatabaseEnv(
   if ((provider !== "postgresql" && provider !== "mysql") || databaseUrl === undefined) {
     throw new EnvironmentValidationError(["DATABASE_PROVIDER", "DATABASE_URL"]);
   }
-  return { DATABASE_PROVIDER: provider, DATABASE_URL: databaseUrl };
+  return {
+    DATABASE_PROVIDER: provider,
+    DATABASE_URL: databaseUrl,
+    ...(targetFile === undefined ? {} : { DATABASE_DEPLOYMENT_TARGET_FILE: targetFile }),
+  };
 }

@@ -11,6 +11,7 @@ const IGNORED_DIRECTORIES = new Set([
   "dist",
   "node_modules",
   "postgres-data",
+  "mysql-data",
   "release",
   "minio-data",
 ]);
@@ -42,7 +43,8 @@ async function listFiles(directory) {
 
 export function inspectFileName(pathname) {
   const name = pathname.split("/").at(-1) ?? "";
-  const unsafeEnv = name === ".env" || (name.startsWith(".env.") && name !== ".env.example");
+  const examples = new Set([".env.example", ".env.mysql.example"]);
+  const unsafeEnv = name === ".env" || (name.startsWith(".env.") && !examples.has(name));
   return unsafeEnv || FORBIDDEN_EXTENSIONS.has(extname(name).toLowerCase());
 }
 

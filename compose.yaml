@@ -1,6 +1,62 @@
 name: html-share
 
+x-database-environment: &database-environment
+  DATABASE_DEPLOYMENT_TARGET_FILE: /deployment-target/target.json
+  LOCAL_DATABASE_CONTAINER_OVERRIDE: ${CONTAINER_DATABASE_URL+true}
+  DATABASE_PROVIDER: ${DATABASE_PROVIDER-postgresql}
+  # The runtime wrapper maps only the exact documented local loopback target.
+  # Explicit external DATABASE_URL values are preserved.
+  POSTGRES_USER: ${POSTGRES_USER:-html_share}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-html_share_local}
+  POSTGRES_DB: ${POSTGRES_DB:-html_share}
+  POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+  MYSQL_USER: ${MYSQL_USER:-html_share}
+  MYSQL_PASSWORD: ${MYSQL_PASSWORD:-html_share_local}
+  MYSQL_DATABASE: ${MYSQL_DATABASE:-html_share}
+  MYSQL_PORT: ${MYSQL_PORT:-3306}
+  DATABASE_URL: ${CONTAINER_DATABASE_URL-${DATABASE_URL:?DATABASE_URL is required}}
+
 services:
+  deployment-init:
+    build:
+      context: .
+      target: server
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /deployment-target && chown node:node /deployment-target"]
+    restart: "no"
+    read_only: true
+    network_mode: none
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN"]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - deployment-targets:/deployment-target
+
+  migrate:
+    build:
+      context: .
+      target: server
+    working_dir: /workspace
+    command:
+      [
+        "node",
+        "/workspace/scripts/database-stack.mjs",
+        "--exec",
+        "sh",
+        "-c",
+        "pnpm db:migrate:deploy && node scripts/database-deployment-preflight.mjs --write-target=/deployment-target/target.json",
+      ]
+    environment: *database-environment
+    depends_on:
+      deployment-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+    volumes:
+      - deployment-targets:/deployment-target
+
   web:
     build:
       context: .
@@ -21,10 +77,10 @@ services:
       NEXT_PUBLIC_DINGTALK_CLIENT_ID: ${NEXT_PUBLIC_DINGTALK_CLIENT_ID:-}
       NEXT_PUBLIC_DINGTALK_CORP_ID: ${NEXT_PUBLIC_DINGTALK_CORP_ID:-}
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       minio:
         condition: service_healthy
     healthcheck:
@@ -41,6 +97,7 @@ services:
       start_period: 10s
 
   server:
+    command: ["node", "/workspace/scripts/database-stack.mjs", "--exec", "pnpm", "start"]
     build:
       context: .
       target: server
@@ -62,7 +119,7 @@ services:
       DEMO_WEB_URL: ${DEMO_WEB_URL:?DEMO_WEB_URL is required}
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 3001
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      <<: *database-environment
       OBJECT_STORAGE_ENDPOINT: http://minio:9000
       OBJECT_STORAGE_PROVIDER: minio
       # The container resolves this Docker Desktop alias while the returned URL
@@ -80,10 +137,10 @@ services:
       DINGTALK_API_BASE_URL: ${DINGTALK_API_BASE_URL:-}
       DINGTALK_EXTERNAL_AUTHORIZE_URL: ${DINGTALK_EXTERNAL_AUTHORIZE_URL:-}
     ports:
-      - "127.0.0.1:3001:3001"
+      - "127.0.0.1:${SERVER_PORT:-3001}:3001"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       minio:
         condition: service_healthy
     healthcheck:
@@ -92,14 +149,18 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3001/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+          "require('node:http').get('http://127.0.0.1:3001/health/ready',{headers:{host:process.env.APP_HOST}},r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))",
         ]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
 
+    volumes:
+      - deployment-targets:/deployment-target
+
   worker:
+    command: ["node", "/workspace/scripts/database-stack.mjs", "--exec", "pnpm", "start"]
     build:
       context: .
       target: worker
@@ -108,7 +169,7 @@ services:
       WORKER_HOST: 0.0.0.0
       WORKER_PORT: 3002
       UPLOAD_HEAD_OBJECT_TIMEOUT_MS: ${UPLOAD_HEAD_OBJECT_TIMEOUT_MS:-10000}
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      <<: *database-environment
       OBJECT_STORAGE_ENDPOINT: http://minio:9000
       OBJECT_STORAGE_PROVIDER: minio
       OBJECT_STORAGE_PUBLIC_ENDPOINT: http://host.docker.internal:9000
@@ -117,10 +178,10 @@ services:
       OBJECT_STORAGE_ACCESS_KEY_ID: ${OBJECT_STORAGE_ACCESS_KEY_ID:?OBJECT_STORAGE_ACCESS_KEY_ID is required}
       OBJECT_STORAGE_ACCESS_KEY_SECRET: ${OBJECT_STORAGE_ACCESS_KEY_SECRET:?OBJECT_STORAGE_ACCESS_KEY_SECRET is required}
     ports:
-      - "127.0.0.1:3002:3002"
+      - "127.0.0.1:${WORKER_PORT:-3002}:3002"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       minio:
         condition: service_healthy
     healthcheck:
@@ -129,12 +190,15 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3002/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+          "fetch('http://127.0.0.1:3002/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
         ]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
+
+    volumes:
+      - deployment-targets:/deployment-target
 
   postgres:
     image: postgres:18.6-alpine
@@ -174,5 +238,6 @@ services:
       start_period: 10s
 
 volumes:
+  deployment-targets:
   postgres-data:
   minio-data:

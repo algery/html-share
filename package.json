@@ -22,8 +22,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "health": "node --env-file=.env.example scripts/health-check.mjs",
-    "infra:down": "docker compose --env-file .env.example down",
-    "infra:up": "docker compose --env-file .env.example up -d --wait postgres minio",
+    "infra:down": "node scripts/database-stack.mjs down",
+    "infra:up": "node scripts/database-stack.mjs infra-up",
     "lint": "eslint . --max-warnings 0",
     "load:phase9:upload:local": "node scripts/phase9-upload-capacity.mjs",
     "security:check": "node scripts/check-secret-hygiene.mjs --workspace",
@@ -38,7 +38,7 @@
     "smoke:phase9:migration": "node scripts/phase9-planb-migration-smoke.mjs",
     "test:browser:local": "playwright test",
     "test:phase9:atomic": "vitest run packages/db/src/upload-repository.integration.test.ts",
-    "stack:up": "pnpm infra:up && pnpm db:migrate:deploy && docker compose --env-file .env.example up -d --build --wait",
+    "stack:up": "node scripts/database-stack.mjs up",
     "test": "pnpm build:packages && vitest run",
     "test:watch": "vitest",
     "typecheck": "pnpm build:packages && tsc -p tsconfig.json --noEmit && pnpm --filter './apps/**' --filter './packages/**' run --if-present typecheck",
@@ -58,7 +58,12 @@
     "db:smoke": "node scripts/database-smoke.mjs",
     "db:test:integration": "node scripts/database-integration-check.mjs",
     "db:upgrade:smoke": "node scripts/database-upgrade-smoke.mjs",
-    "db:test:contract": "node scripts/database-contract-check.mjs"
+    "db:test:contract": "node scripts/database-contract-check.mjs",
+    "stack:config": "node scripts/database-stack.mjs config",
+    "db:deployment:preflight": "node scripts/database-deployment-preflight.mjs",
+    "db:test:compatibility": "node scripts/database-compatibility-check.mjs",
+    "db:smoke:images": "node scripts/database-image-smoke.mjs",
+    "db:smoke:migration": "node scripts/database-migration-smoke.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

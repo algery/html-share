@@ -2,7 +2,7 @@
   route {
     @metrics path /health/metrics
     respond @metrics 404
-    @api path /api/* /auth/* /mcp /health/live
+    @api path /api/* /auth/* /mcp /health/live /health/ready
     reverse_proxy @api server:3001
     reverse_proxy web:3000
   }

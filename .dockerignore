@@ -22,9 +22,11 @@ release
 .env
 .env.*
 !.env.example
+!.env.mysql.example
 **/.env
 **/.env.*
 !**/.env.example
+!**/.env.mysql.example
 **/*.crt
 **/*.jks
 **/*.key
@@ -40,6 +42,8 @@ minio-data
 **/minio-data
 postgres-data
 **/postgres-data
+mysql-data
+**/mysql-data
 
 *.log
 *.tsbuildinfo

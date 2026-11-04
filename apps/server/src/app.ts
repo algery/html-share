@@ -1,3 +1,4 @@
+import { registerServerReadiness } from "./app-readiness.js";
 import { registerInAppAuthCors, registerManagementApiCors } from "./app-cors.js";
 import { registerPasswordAccess } from "./app-password-access.js";
 import cookie from "@fastify/cookie";
@@ -50,6 +51,7 @@ export interface ServerAppOptions {
   };
   dingtalk: DingTalkAuthorizationClient;
   logger?: boolean;
+  readiness?: () => Promise<void>;
   mcpTokens: McpTokenService;
   projectManagement?: ProjectManagementReader;
   projects?: ProjectReader;
@@ -91,6 +93,8 @@ export function buildServerApp(options: ServerAppOptions): FastifyInstance {
       : { authRateLimitPerMinute: options.rateLimits.authPerMinute }),
     demoHost: options.demoHost,
   });
+
+  registerServerReadiness(app, options);
 
   app.addContentTypeParser(
     "application/x-www-form-urlencoded",

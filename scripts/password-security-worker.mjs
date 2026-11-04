@@ -7,10 +7,6 @@ import {
   responseCookies,
   responseState,
 } from "./password-access-fixture.mjs";
-import {
-  createPasswordCleanupRepository,
-  createProjectDeletionRepository,
-} from "../packages/db/dist/index.js";
 import { runPasswordAccessCleanup } from "../apps/worker/dist/jobs/cleanup-password-access.js";
 
 assert(
@@ -93,7 +89,7 @@ try {
     rejected.status === 302 && rejected.headers.etag === undefined,
     "expired grant denies conditional HEAD before cleanup",
   );
-  const cleanup = createPasswordCleanupRepository(h.prisma);
+  const cleanup = h.repositories.passwordCleanup;
   check(
     (await runPasswordAccessCleanup({ repository: cleanup })) === "completed",
     "real worker cleanup starts expired batch",
@@ -132,7 +128,7 @@ try {
       .access_password === second.result.access_password,
     "valid result remains available",
   );
-  await createProjectDeletionRepository(h.prisma).deleteAsOwner({
+  await h.repositories.deletion.deleteAsOwner({
     ownerUserId: secondProject.ownerUserId,
     projectKey: secondProject.projectKey,
     now: new Date(),

@@ -19,16 +19,18 @@ RUN --mount=type=cache,id=html-share-pnpm-store,target=/root/.local/share/pnpm/s
 
 COPY . .
 
-FROM workspace AS server-build
-RUN pnpm db:generate \
-  && pnpm build:packages \
-  && pnpm --filter @html-share/server build
+FROM workspace AS database-build
+# Both clients and both migration histories belong to every server/worker image.
+# Generation only happens at build time; no provider build argument is accepted.
+RUN pnpm db:generate && pnpm build:packages
 
-FROM workspace AS worker-build
-RUN pnpm build:packages \
-  && pnpm --filter @html-share/worker build
+FROM database-build AS server-build
+RUN pnpm --filter @html-share/server build
 
-FROM workspace AS web-build
+FROM database-build AS worker-build
+RUN pnpm --filter @html-share/worker build
+
+FROM database-build AS web-build
 # Next.js replaces NEXT_PUBLIC_* values while building browser bundles. They must
 # therefore be provided to the image build, rather than only when the container
 # starts. These are intentionally public configuration values, never secrets.
@@ -45,7 +47,7 @@ ENV NEXT_PUBLIC_DEMO_URL=$NEXT_PUBLIC_DEMO_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_DINGTALK_CLIENT_ID=$NEXT_PUBLIC_DINGTALK_CLIENT_ID
 ENV NEXT_PUBLIC_DINGTALK_CORP_ID=$NEXT_PUBLIC_DINGTALK_CORP_ID
-RUN pnpm build:packages && pnpm --filter @html-share/web build
+RUN pnpm --filter @html-share/web build
 # Next standalone output omits browser static assets. Place them next to the
 # generated server so CSS and client JavaScript resolve from the same runtime.
 RUN mkdir -p apps/web/.next/standalone/apps/web/.next \
