@@ -66,19 +66,17 @@ export async function prepareUpload(
       ) {
         return toPrepared(existing, existing.project.projectKey, true, "prepared");
       }
+      // Failed/expired creates released their reservation. Reusing the pending
+      // project must reserve quota again under the same owner advisory lock.
+      if (input.action === "create")
+        await assertCreateQuota(tx, input.owner.id, input.totalSize, input.now);
       const project =
         input.action === "replace"
           ? await findOwnedProject(tx, requiredProjectId(input.projectId), input.owner.id)
           : existing?.status === UploadTaskStatus.EXPIRED ||
               existing?.status === UploadTaskStatus.FAILED
             ? await findOwnedProject(tx, existing.project.projectKey, input.owner.id)
-            : await createReservedProject(
-                tx,
-                input.owner.id,
-                input.displayName,
-                input.totalSize,
-                input.now,
-              );
+            : await createReservedProject(tx, input.owner.id, input.displayName);
       const revisionNumber = await tx.revision.aggregate({
         _max: { revisionNumber: true },
         where: { projectId: project.id },
@@ -144,17 +142,34 @@ export async function prepareUpload(
   }
 }
 
-async function createReservedProject(
-  tx: Transaction,
-  ownerUserId: string,
-  displayName: string,
-  requestedBytes: number,
-  now: Date,
-) {
+async function createReservedProject(tx: Transaction, ownerUserId: string, displayName: string) {
   const owner = await tx.user.findUniqueOrThrow({
     where: { id: ownerUserId },
     select: { tenantId: true },
   });
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    try {
+      return await tx.demoProject.create({
+        data: {
+          displayName,
+          ownerUserId,
+          projectKey: createProjectKey(),
+          tenantId: owner.tenantId,
+        },
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error) || attempt === 9) throw error;
+    }
+  }
+  throw new UploadError("PROJECT_UPLOAD_CONFLICT");
+}
+
+async function assertCreateQuota(
+  tx: Transaction,
+  ownerUserId: string,
+  requestedBytes: number,
+  now: Date,
+) {
   const [activeCount, activeBytes, reservations] = await Promise.all([
     tx.demoProject.count({ where: { ownerUserId, status: DemoProjectStatus.ACTIVE } }),
     tx.demoProject.aggregate({
@@ -176,21 +191,6 @@ async function createReservedProject(
     Number(activeBytes._sum.totalSize ?? 0n) + Number(reservations._sum.storageBytes ?? 0n);
   if (usedBytes + requestedBytes > MAX_STORAGE_BYTES_PER_USER)
     throw new UploadError("STORAGE_QUOTA_EXCEEDED");
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    try {
-      return await tx.demoProject.create({
-        data: {
-          displayName,
-          ownerUserId,
-          projectKey: createProjectKey(),
-          tenantId: owner.tenantId,
-        },
-      });
-    } catch (error) {
-      if (!isUniqueViolation(error) || attempt === 9) throw error;
-    }
-  }
-  throw new UploadError("PROJECT_UPLOAD_CONFLICT");
 }
 
 async function findOwnedProject(tx: Transaction, projectKey: string, ownerUserId: string) {
