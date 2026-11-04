@@ -42,6 +42,36 @@ describe("server in-app authorization CORS", () => {
     await app.close();
   });
 
+  it("permits homepage PUT preflight only from the configured management origin", async () => {
+    const preflight = await app.inject({
+      method: "OPTIONS",
+      url: "/api/projects/abc12/homepage",
+      headers: {
+        host: "app.localhost",
+        origin: "http://app.localhost:3000",
+        "access-control-request-method": "PUT",
+        "access-control-request-headers": "content-type,x-html-share-csrf",
+      },
+    });
+    expect(preflight.statusCode).toBe(204);
+    expect(preflight.headers["access-control-allow-methods"]?.split(/,\s*/)).toContain("PUT");
+    expect(preflight.headers["access-control-allow-credentials"]).toBe("true");
+    const untrusted = await app.inject({
+      method: "OPTIONS",
+      url: "/api/projects/abc12/homepage",
+      headers: { host: "app.localhost", origin: "https://attacker.test" },
+    });
+    expect(untrusted.statusCode).toBe(403);
+    expect(untrusted.headers["access-control-allow-origin"]).toBeUndefined();
+    const missingCsrf = await app.inject({
+      method: "PUT",
+      url: "/api/projects/abc12/homepage",
+      headers: { host: "app.localhost", origin: "http://app.localhost:3000" },
+      payload: { relativePath: "index.html" },
+    });
+    expect(missingCsrf.statusCode).not.toBe(200);
+  });
+
   it("allows credentialed management authorization only from the configured management origin", async () => {
     const preflight = await app.inject({
       method: "OPTIONS",

@@ -52,7 +52,7 @@ export function registerManagementApiCors(app: FastifyInstance, appWebUrl: strin
       reply
         .header("access-control-allow-credentials", "true")
         .header("access-control-allow-headers", "content-type, x-html-share-csrf, x-trace-id")
-        .header("access-control-allow-methods", "GET, POST, OPTIONS")
+        .header("access-control-allow-methods", "GET, POST, PUT, OPTIONS")
         .header("access-control-allow-origin", appWebUrl)
         .header("vary", "Origin");
     }
