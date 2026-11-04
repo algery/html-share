@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 
-import { DemoHomepageLink, type DemoHomepage } from "./demo-homepage-link";
+import { DemoHomepageLink, DemoShareAction, type DemoHomepage } from "./demo-homepage-link";
 import { DeleteEntry } from "./demo-delete-dialog";
 import { AccessModeBadge } from "./access-mode-badge";
 
@@ -30,15 +30,15 @@ export function DemoList({ apiUrl, csrfToken, demos, onDeleted }: DemoListProps)
   const [deleteTarget, setDeleteTarget] = useState<DemoSummary | null>(null);
   return (
     <>
-      <div className="hidden overflow-x-auto rounded-xl border border-slate-200 md:block">
-        <table className="w-full min-w-[920px] table-fixed divide-y divide-slate-200 text-left text-sm">
+      <div className="table-shell hidden md:block">
+        <table className="data-table demo-table min-w-[1008px] table-fixed">
           <colgroup>
-            <col className="w-[240px]" />
-            <col className="w-[180px]" />
+            <col />
+            <col className="w-[160px] xl:w-[180px]" />
             <col className="w-[100px]" />
-            <col className="w-[64px]" />
-            <col className="w-[72px]" />
-            <col className="w-[200px]" />
+            <col className="w-[92px] xl:w-[100px]" />
+            <col className="w-[188px] xl:w-[200px]" />
+            <col className="w-[160px]" />
             <col className="w-[64px]" />
           </colgroup>
           <thead className="bg-slate-50 text-slate-600">
@@ -46,13 +46,15 @@ export function DemoList({ apiUrl, csrfToken, demos, onDeleted }: DemoListProps)
               <Header>名称</Header>
               <Header>首页链接</Header>
               <Header>访问方式</Header>
-              <Header>文件</Header>
-              <Header>大小</Header>
+              <Header>文件 / 大小</Header>
               <Header>时间</Header>
-              <th className="sticky right-0 bg-slate-50 px-4 py-3 font-medium">操作</th>
+              <Header>分享</Header>
+              <th className="px-3 py-3 font-medium">
+                <span className="sr-only">操作</span>
+              </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 bg-white">
+          <tbody className="bg-white">
             {demos.map((demo) => (
               <DemoRow
                 apiUrl={apiUrl}
@@ -97,28 +99,33 @@ function DemoRow({
 }) {
   return (
     <tr>
-      <td className="min-w-60 px-4 py-3 font-medium">
+      <td className="min-w-60 px-3 py-3 font-medium">
         <div className="truncate">
           <DemoName demo={demo} />
         </div>
-        <p className="mt-1 font-mono text-xs text-slate-500">{demo.projectId}</p>
+        <p className="mt-0.5 font-mono text-xs text-slate-500">{demo.projectId}</p>
       </td>
-      <td className="px-4 py-3">
-        <DemoHomepageLink apiUrl={apiUrl} demo={demo} />
+      <td className="px-3 py-3">
+        <DemoHomepageLink demo={demo} />
       </td>
-      <td className="px-4 py-3">
+      <td className="px-3 py-3">
         <AccessModeBadge mode={demo.accessMode} />
       </td>
-      <td className="px-4 py-3">{demo.fileCount}</td>
-      <td className="px-4 py-3 whitespace-nowrap">{formatBytes(demo.totalSize)}</td>
-      <td className="px-4 py-3 whitespace-nowrap text-xs leading-5">
+      <td className="px-3 py-3 whitespace-nowrap text-xs leading-5">
+        <p>{demo.fileCount} 个文件</p>
+        <p className="text-slate-500">{formatBytes(demo.totalSize)}</p>
+      </td>
+      <td className="px-3 py-3 whitespace-nowrap text-xs leading-5">
         <p>
           <span className="text-slate-500">更新 </span>
           {formatDate(demo.updatedAt)}
         </p>
         <p className="text-slate-500">创建 {formatDate(demo.createdAt)}</p>
       </td>
-      <td className="sticky right-0 bg-white px-4 py-3">
+      <td className="share-cell px-3 py-3">
+        <DemoShareAction apiUrl={apiUrl} demo={demo} />
+      </td>
+      <td className="px-3 py-3">
         <DeleteButton demo={demo} onDelete={onDelete} />
       </td>
     </tr>
@@ -135,49 +142,46 @@ function DemoCard({
   onDelete: (demo: DemoSummary) => void;
 }) {
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-4">
+    <article className="rounded-lg border border-slate-200 bg-white p-4">
       <div className="flex items-start justify-between gap-3">
-        <h3 className="min-w-0 break-all font-semibold">
-          <DemoName demo={demo} />
-        </h3>
+        <div className="min-w-0">
+          <h3 className="break-words font-semibold">
+            <DemoName demo={demo} />
+          </h3>
+          <p className="mt-0.5 font-mono text-xs text-slate-500">{demo.projectId}</p>
+        </div>
         <DeleteButton demo={demo} onDelete={onDelete} />
       </div>
-      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-        <Detail label="项目标识" value={demo.projectId} />
-        <Detail label="文件数" value={String(demo.fileCount)} />
-        <div>
-          <dt className="text-slate-500">访问方式</dt>
-          <dd className="mt-1">
-            <AccessModeBadge mode={demo.accessMode} />
-          </dd>
+      <div className="mt-3 flex min-w-0 items-center justify-between gap-3">
+        <div className="min-w-0">
+          <DemoHomepageLink demo={demo} />
         </div>
-        <Detail label="总大小" value={formatBytes(demo.totalSize)} />
-        <Detail label="创建时间" value={formatDate(demo.createdAt)} />
-        <Detail label="更新时间" value={formatDate(demo.updatedAt)} />
-        <div className="col-span-2">
-          <dt className="text-slate-500">首页链接</dt>
-          <dd className="mt-1">
-            <DemoHomepageLink apiUrl={apiUrl} demo={demo} />
-          </dd>
+        <AccessModeBadge mode={demo.accessMode} />
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        {demo.fileCount} 个文件 · {formatBytes(demo.totalSize)}
+      </p>
+      <dl className="mt-2 grid gap-0.5 text-xs text-slate-500">
+        <div className="flex gap-2">
+          <dt>更新</dt>
+          <dd>{formatDate(demo.updatedAt)}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt>创建</dt>
+          <dd>{formatDate(demo.createdAt)}</dd>
         </div>
       </dl>
+      <div className="mt-3 border-t border-slate-200 pt-3">
+        <DemoShareAction apiUrl={apiUrl} demo={demo} />
+      </div>
     </article>
-  );
-}
-
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="mt-1 break-all font-medium">{value}</dd>
-    </div>
   );
 }
 
 function DemoName({ demo }: { demo: DemoSummary }) {
   return (
     <Link
-      className="text-blue-700 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
+      className="inline-flex min-h-10 max-w-full items-center text-slate-950 underline-offset-4 md:inline md:min-h-0 hover:text-blue-600 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
       title={demo.displayName}
       href={`/demos/${demo.projectId}`}
     >
@@ -195,7 +199,7 @@ function DeleteButton({
 }) {
   return (
     <button
-      className="min-h-10 font-semibold text-rose-700 hover:text-rose-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
+      className="min-h-10 min-w-10 text-xs font-medium text-rose-700 hover:text-rose-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
       onClick={() => onDelete(demo)}
       type="button"
     >
@@ -212,7 +216,7 @@ export function formatBytes(bytes: number) {
 }
 
 export function formatDate(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(
+  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(
     new Date(value),
   );
 }

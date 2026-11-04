@@ -55,7 +55,7 @@ export function PasswordAccessConfirmDialog({
       role="dialog"
       tabIndex={-1}
     >
-      <section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+      <section className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
         <h2 className="text-lg font-semibold" id="password-confirm-title">
           {content.title}
         </h2>

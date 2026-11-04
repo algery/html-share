@@ -1,11 +1,12 @@
 "use client";
 
+import { ManagementIcon } from "./management-icon";
 import { useState } from "react";
 import { DemoList } from "./demo-list";
 import type { DemoResponse } from "./demo-manager";
 
 const buttonClass =
-  "min-h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-700";
+  "min-h-10 md:min-h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-700";
 
 export function DemoBrowser({
   apiUrl,
@@ -33,20 +34,24 @@ export function DemoBrowser({
     setPage(1);
   }
   return (
-    <section className="mt-8 min-w-0" aria-labelledby="demo-list-title">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <section className="min-w-0" aria-labelledby="demo-list-title">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight" id="demo-list-title">
+          <h2 className="sr-only" id="demo-list-title">
             已发布的 Demo
           </h2>
-          <p className="mt-1 text-xs text-slate-500" aria-live="polite">
+          <p className="text-sm text-slate-500" aria-live="polite">
             共 {data.projects.length} 个项目{keyword ? `，匹配 ${projects.length} 个` : ""}
           </p>
         </div>
-        <label className="w-full sm:w-72">
+        <label className="relative w-full sm:order-first sm:w-80">
           <span className="sr-only">搜索项目名</span>
+          <ManagementIcon
+            name="search"
+            className="pointer-events-none absolute left-3 top-3 text-slate-400"
+          />
           <input
-            className="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm focus:outline-2 focus:outline-blue-700"
+            className="field pl-10"
             type="search"
             autoComplete="off"
             placeholder="搜索项目名"
@@ -58,12 +63,12 @@ export function DemoBrowser({
           />
         </label>
       </div>
-      <div className="mt-4">
+      <div className="mt-0">
         {projects.length === 0 ? (
           <div className="rounded-xl bg-slate-50 p-6 text-sm text-slate-600">
             <p>没有匹配的项目。</p>
             <button
-              className="mt-2 min-h-9 font-semibold text-blue-700 hover:underline"
+              className="mt-2 min-h-10 md:min-h-9 font-semibold text-blue-700 hover:underline"
               onClick={clearSearch}
               type="button"
             >
@@ -92,7 +97,7 @@ export function DemoBrowser({
             每页{" "}
             <select
               aria-label="每页条数"
-              className="min-h-9 rounded-lg border border-slate-300 bg-white px-2"
+              className="min-h-10 md:min-h-9 rounded-lg border border-slate-300 bg-white px-2"
               value={pageSize}
               onChange={(event) => {
                 setPageSize(Number(event.target.value));

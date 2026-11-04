@@ -9,7 +9,7 @@ interface InstallGuideProps {
 function Command({ value }: { value: string }) {
   return (
     <div className="mt-2">
-      <pre className="overflow-x-auto rounded-lg bg-slate-900 p-4 text-xs text-slate-100">
+      <pre className="max-w-full overflow-x-auto rounded-lg bg-slate-900 p-4 font-mono text-xs leading-6 text-slate-100">
         {value}
       </pre>
       <CopyCodeButton value={value} />
@@ -38,12 +38,12 @@ export function InstallGuide({ apiUrl, host, mcpUrl }: InstallGuideProps) {
     ? "unzip -o codex-html-share.zip -d ~"
     : "unzip -o claude-code-html-share.zip -d ~";
   return (
-    <div className="mt-4 grid min-w-0 grid-cols-1 gap-5 rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+    <div className="mt-4 grid min-w-0 grid-cols-1 gap-5 text-sm leading-6 text-slate-700">
       <p>先创建 Token；它只应保存在本机环境变量或宿主配置，不要放入项目、聊天或截图。</p>
       <section>
         <h3 className="font-semibold text-slate-900">1. 下载并安装 Skill</h3>
         <a
-          className="mt-2 inline-flex font-semibold text-blue-700 hover:text-blue-800"
+          className="button-secondary mt-2 inline-flex"
           download
           href={`${apiUrl}/api/skills/${isCodex ? "codex" : "claude-code"}`}
         >

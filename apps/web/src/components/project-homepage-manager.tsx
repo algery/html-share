@@ -61,12 +61,8 @@ export function ProjectHomepageManager({
     }
   }
   return (
-    <section
-      className="mt-7 min-w-0 rounded-xl border border-slate-200 p-4"
-      id="project-homepage"
-      aria-labelledby="homepage-title"
-    >
-      <h2 className="font-semibold" id="homepage-title">
+    <section className="surface" id="project-homepage" aria-labelledby="homepage-title">
+      <h2 className="section-title" id="homepage-title">
         项目首页
       </h2>
       <p className="mt-2 break-all text-sm text-slate-600">
@@ -87,7 +83,7 @@ export function ProjectHomepageManager({
           <span className="sr-only">首页文件</span>
           <select
             aria-label="首页文件"
-            className="min-h-10 w-full min-w-0 max-w-full rounded-lg border border-slate-300 bg-white px-3 text-sm"
+            className="field"
             value={path}
             disabled={busy}
             onChange={(event) => {
@@ -109,7 +105,7 @@ export function ProjectHomepageManager({
           </select>
         </label>
         <button
-          className="min-h-10 shrink-0 rounded-lg bg-blue-700 px-4 text-sm font-semibold text-white disabled:opacity-50 hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+          className="button-primary"
           type="button"
           disabled={busy || (path !== "" && !candidates.some((file) => file.relativePath === path))}
           onClick={() => void save()}

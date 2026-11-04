@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 
 import { McpConnectionGuide } from "./mcp-connection-guide";
+import { TokenCreatedPanel } from "./token-created-panel";
 import { TokenList, type TokenSummary } from "./token-list";
 
 interface TokenManagerProps {
@@ -80,27 +81,33 @@ export function TokenManager({ apiUrl }: TokenManagerProps) {
   }
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-14">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
-        <p className="text-sm font-semibold text-blue-700">我的 Token</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-balance">连接你的 Agent</h1>
-        <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
-          Token 只会在创建成功时完整展示一次。它只用于 MCP 连接，30 天后自动过期。
-        </p>
+    <main className="workspace">
+      <header className="workspace-header">
+        <div className="min-w-0">
+          <h1 className="page-title">我的 Token</h1>
+          <p className="page-description mt-2">
+            用于连接 Codex / Claude Code，有效期 30 天，完整值仅创建时展示一次。
+          </p>
+        </div>
+      </header>
 
-        {createdValue !== null ? (
-          <CreatedToken
-            expiresAt={createdExpiresAt}
-            value={createdValue}
-            onDismiss={() => {
-              setCreatedValue(null);
-              setCreatedExpiresAt(null);
-            }}
-          />
-        ) : null}
+      {createdValue !== null ? (
+        <TokenCreatedPanel
+          expiresAt={createdExpiresAt}
+          value={createdValue}
+          onDismiss={() => {
+            setCreatedValue(null);
+            setCreatedExpiresAt(null);
+          }}
+        />
+      ) : null}
 
+      <section className="surface mt-6" aria-labelledby="create-token-title">
+        <h2 className="section-title" id="create-token-title">
+          创建 Token
+        </h2>
         <form
-          className="mt-8 flex flex-col gap-3 sm:flex-row"
+          className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
           onSubmit={(event) => {
             event.preventDefault();
             void createToken();
@@ -109,7 +116,7 @@ export function TokenManager({ apiUrl }: TokenManagerProps) {
           <label className="min-w-0 flex-1 text-sm font-medium text-slate-800">
             Token 名称
             <input
-              className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base outline-none ring-blue-700 transition focus:border-blue-700 focus:ring-2"
+              className="field mt-2 w-full"
               disabled={isSubmitting}
               maxLength={40}
               onChange={(event) => setName(event.target.value)}
@@ -119,48 +126,47 @@ export function TokenManager({ apiUrl }: TokenManagerProps) {
             />
           </label>
           <button
-            className="mt-6 inline-flex min-h-11 items-center justify-center rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-400 sm:mt-auto"
+            className="button-primary shrink-0"
             disabled={isSubmitting || name.trim().length === 0}
             type="submit"
           >
             {isSubmitting ? "正在创建…" : "创建 Token"}
           </button>
         </form>
-
         {tokens.some((token) => token.name.trim() === name.trim()) && name.trim().length > 0 ? (
           <p className="mt-2 text-sm text-amber-800">
             已有同名 Token；仍可创建，但建议用不同名称便于识别。
           </p>
         ) : null}
+      </section>
 
-        {error !== null ? <TokenError message={error} onRetry={retry} /> : null}
+      {error !== null ? <TokenError message={error} onRetry={retry} /> : null}
 
-        <section className="mt-10" aria-labelledby="token-list-title">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 id="token-list-title" className="text-lg font-semibold tracking-tight">
-              已创建的 Token
-            </h2>
-            <button
-              aria-controls={guideId}
-              aria-expanded={isGuideOpen}
-              className="text-sm font-semibold text-blue-700 hover:text-blue-800"
-              onClick={() => setIsGuideOpen((current) => !current)}
-              type="button"
-            >
-              {isGuideOpen ? "收起连接配置" : "查看 Codex / Claude Code 配置"}
-            </button>
+      <section className="mt-6" aria-labelledby="token-list-title">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="token-list-title" className="section-title">
+            已创建的 Token
+          </h2>
+          <button
+            aria-controls={guideId}
+            aria-expanded={isGuideOpen}
+            className="button-secondary"
+            onClick={() => setIsGuideOpen((current) => !current)}
+            type="button"
+          >
+            {isGuideOpen ? "收起连接配置" : "查看 Codex / Claude Code 配置"}
+          </button>
+        </div>
+        {isGuideOpen ? (
+          <div className="config-panel" id={guideId}>
+            <McpConnectionGuide apiUrl={apiUrl} mcpUrl={`${apiUrl}/mcp`} />
           </div>
-          {isGuideOpen ? (
-            <div id={guideId}>
-              <McpConnectionGuide apiUrl={apiUrl} mcpUrl={`${apiUrl}/mcp`} />
-            </div>
-          ) : null}
-          {isLoading ? <TokenSkeleton /> : null}
-          {!isLoading && tokens.length === 0 ? <EmptyTokenState /> : null}
-          {!isLoading && tokens.length > 0 ? (
-            <TokenList tokens={tokens} onRevoke={revokeToken} />
-          ) : null}
-        </section>
+        ) : null}
+        {isLoading ? <TokenSkeleton /> : null}
+        {!isLoading && tokens.length === 0 ? <EmptyTokenState /> : null}
+        {!isLoading && tokens.length > 0 ? (
+          <TokenList tokens={tokens} onRevoke={revokeToken} />
+        ) : null}
       </section>
     </main>
   );
@@ -174,65 +180,37 @@ async function requestCsrfToken(apiUrl: string) {
   return body.csrfToken;
 }
 
-function CreatedToken({
-  expiresAt,
-  value,
-  onDismiss,
-}: {
-  expiresAt: string | null;
-  value: string;
-  onDismiss: () => void;
-}) {
-  return (
-    <section
-      className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-4"
-      aria-labelledby="created-token-title"
-    >
-      <h2 id="created-token-title" className="font-semibold text-amber-950">
-        请立即复制 Token
-      </h2>
-      <p className="mt-1 text-sm leading-6 text-amber-900">
-        关闭或刷新页面后，平台无法再次显示完整值。
-      </p>
-      {expiresAt === null ? null : (
-        <p className="mt-1 text-sm leading-6 text-amber-900">到期时间：{formatDate(expiresAt)}</p>
-      )}
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-        <code className="min-w-0 flex-1 overflow-x-auto rounded-md bg-white px-3 py-2 text-sm text-slate-900">
-          {value}
-        </code>
-        <button
-          className="min-h-10 rounded-md bg-amber-700 px-4 text-sm font-semibold text-white hover:bg-amber-800"
-          onClick={() => void navigator.clipboard.writeText(value)}
-          type="button"
-        >
-          复制
-        </button>
-        <button
-          className="min-h-10 rounded-md border border-amber-300 px-4 text-sm font-semibold text-amber-950"
-          onClick={onDismiss}
-          type="button"
-        >
-          我已保存
-        </button>
-      </div>
-    </section>
-  );
-}
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(
-    new Date(value),
-  );
-}
-
 function TokenSkeleton() {
   return (
-    <div className="mt-4 h-32 animate-pulse rounded-xl bg-slate-100" aria-label="正在加载 Token" />
+    <div aria-label="正在加载 Token" aria-busy="true" className="table-shell mt-4">
+      <div
+        aria-hidden="true"
+        className="hidden justify-between bg-slate-50 px-4 py-3 text-xs text-slate-500 md:flex"
+      >
+        <span>名称</span>
+        <span>末尾字符</span>
+        <span>状态</span>
+        <span>创建时间</span>
+        <span>到期</span>
+        <span>最近使用</span>
+      </div>
+      {[0, 1, 2].map((row) => (
+        <div
+          aria-hidden="true"
+          className="flex h-16 items-center gap-8 border-t border-slate-200 px-4"
+          key={row}
+        >
+          <span className="h-3 w-44 animate-pulse rounded bg-slate-100" />
+          <span className="h-3 w-24 animate-pulse rounded bg-slate-100" />
+          <span className="h-3 w-20 animate-pulse rounded bg-slate-100" />
+        </div>
+      ))}
+    </div>
   );
 }
 function EmptyTokenState() {
   return (
-    <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm leading-6 text-slate-600">
+    <p className="surface mt-4 text-sm leading-6 text-slate-600">
       还没有 Token。创建一个 Token 后，将它放入 Codex 或 Claude Code 的 Authorization Header。
     </p>
   );

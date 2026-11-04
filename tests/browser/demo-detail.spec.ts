@@ -94,7 +94,7 @@ for (const width of [1280, 375]) {
       fullPage: true,
     });
     await page.getByRole("link", { name: "返回我的 Demo" }).click();
-    await expect(page.getByRole("heading", { name: "管理已发布的 Demo" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "我的 Demo", exact: true })).toBeVisible();
     await page.screenshot({
       path: `/tmp/html-share-demo-list-${width}-${test.info().project.name}.png`,
       fullPage: true,
@@ -161,7 +161,7 @@ for (const width of [1280, 375]) {
     expect(compactLayout).not.toBeNull();
     expect(compactLayout?.paddingTop).toBe("10px");
     expect(compactLayout?.paddingBottom).toBe("10px");
-    expect(compactLayout?.buttonHeight).toBe(32);
+    expect(compactLayout?.buttonHeight).toBe(width >= 768 ? 36 : 40);
     if (width >= 640) {
       expect(
         Math.abs((compactLayout?.linkCenter ?? 0) - (compactLayout?.buttonCenter ?? 0)),

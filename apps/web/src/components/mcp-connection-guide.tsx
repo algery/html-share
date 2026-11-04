@@ -8,8 +8,8 @@ export function McpConnectionGuide({ apiUrl, mcpUrl }: { apiUrl: string; mcpUrl:
   const [host, setHost] = useState<"claude" | "codex">("codex");
   const panelId = useId();
   return (
-    <section className="mt-4">
-      <div aria-label="选择 Agent 宿主" role="tablist" className="flex gap-2">
+    <section className="surface mt-4 min-w-0">
+      <div aria-label="选择 Agent 宿主" role="tablist" className="flex flex-wrap gap-2">
         <Tab
           active={host === "codex"}
           label="Codex"
@@ -45,7 +45,7 @@ function Tab({
     <button
       aria-controls={panelId}
       aria-selected={active}
-      className={`min-h-10 rounded-md px-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 ${active ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}
+      className={active ? "button-primary" : "button-secondary"}
       onClick={onClick}
       role="tab"
       type="button"

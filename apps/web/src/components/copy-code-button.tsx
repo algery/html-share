@@ -4,6 +4,7 @@ import { useState } from "react";
 
 interface CopyCodeButtonProps {
   compact?: boolean;
+  tone?: "primary" | "secondary";
   disabledReason?: string;
   failureValue?: string;
   label?: string;
@@ -16,6 +17,7 @@ export class CopyValueError extends Error {}
 
 export function CopyCodeButton({
   compact = false,
+  tone = "secondary",
   disabledReason,
   failureValue,
   label = "复制配置",
@@ -74,10 +76,10 @@ export function CopyCodeButton({
   }
 
   return (
-    <span className={`${compact ? "mt-0 shrink-0" : "mt-2"} inline-grid max-w-full gap-2`}>
-      <span className="inline-flex max-w-full flex-wrap items-center gap-2">
+    <span className={`${compact ? "mt-0" : "mt-2"} copy-action min-w-0`}>
+      <span className="copy-line">
         <button
-          className={`${compact ? "min-h-8 px-2.5" : "min-h-9 px-3"} shrink-0 whitespace-nowrap rounded-md border border-slate-300 bg-white text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700`}
+          className={`${tone === "primary" ? "button-primary" : "button-secondary"} ${compact ? "min-h-10 px-3 md:min-h-9" : "min-h-10"} whitespace-nowrap text-xs`}
           aria-busy={busy}
           disabled={busy || disabledReason !== undefined}
           onClick={() => void copy()}
@@ -85,7 +87,7 @@ export function CopyCodeButton({
         >
           {busy ? "正在复制…" : label}
         </button>
-        <span aria-live="polite" className="text-xs text-slate-600">
+        <span aria-live="polite" className="copy-status text-xs text-slate-600">
           {disabledReason ?? message}
         </span>
       </span>

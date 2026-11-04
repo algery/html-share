@@ -77,10 +77,10 @@ export function AdminProjectRemoval({ apiUrl }: AdminProjectRemovalProps) {
   const validProjectKey = /^[a-z0-9]{5}$/.test(projectKey);
   const validReason = [...reason.trim()].length >= 10 && [...reason.trim()].length <= 500;
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 sm:py-14">
-      <section className="rounded-2xl border border-rose-200 bg-white p-6 shadow-sm sm:p-10">
+    <main className="workspace">
+      <section className="surface max-w-3xl">
         <p className="text-sm font-semibold text-rose-700">管理员应急止损</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight">永久删除一个 Demo</h1>
+        <h1 className="mt-3 page-title">永久删除一个 Demo</h1>
         <p className="mt-4 text-sm leading-6 text-slate-600">
           仅能按准确项目标识查询元数据，不能浏览项目或文件。删除不可恢复，操作原因将写入审计日志。
         </p>

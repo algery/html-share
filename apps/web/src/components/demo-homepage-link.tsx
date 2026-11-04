@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { CopyCodeButton } from "./copy-code-button";
+import { ManagementIcon } from "./management-icon";
 import { CopyProjectShareButton } from "./copy-project-share-button";
 import type { DemoSummary } from "./demo-list";
 
@@ -12,7 +13,7 @@ export interface DemoHomepage {
   url: string | null;
 }
 
-export function DemoHomepageLink({ demo, apiUrl }: { demo: DemoSummary; apiUrl: string }) {
+export function DemoHomepageLink({ demo }: { demo: DemoSummary }) {
   const homepage = demo.homepage;
   if (!homepage?.url)
     return (
@@ -25,7 +26,7 @@ export function DemoHomepageLink({ demo, apiUrl }: { demo: DemoSummary; apiUrl: 
               : "尚未指定首页"}
         </p>
         <Link
-          className="inline-flex min-h-8 items-center font-semibold text-blue-700 hover:underline"
+          className="inline-flex min-h-10 md:min-h-8 items-center font-semibold text-blue-700 hover:underline"
           href={`/demos/${demo.projectId}#project-homepage`}
         >
           设置首页
@@ -35,19 +36,25 @@ export function DemoHomepageLink({ demo, apiUrl }: { demo: DemoSummary; apiUrl: 
   return (
     <div className="min-w-0">
       <a
-        className="block truncate font-mono text-xs text-blue-700 underline-offset-4 hover:underline"
+        className="inline-flex min-h-10 max-w-full items-center md:min-h-0 gap-1.5 text-blue-600 underline-offset-4 hover:underline"
         href={homepage.url}
         title={homepage.url}
         target="_blank"
         rel="noopener noreferrer"
       >
-        {homepage.path}
+        <span className="truncate font-mono text-xs">{homepage.path}</span>
+        <ManagementIcon name="arrow" className="shrink-0" />
       </a>
-      {demo.accessMode === "password" ? (
-        <CopyProjectShareButton apiUrl={apiUrl} projectId={demo.projectId} url={homepage.url} />
-      ) : (
-        <CopyCodeButton compact label="复制首页" value={homepage.url} />
-      )}
     </div>
+  );
+}
+
+export function DemoShareAction({ demo, apiUrl }: { demo: DemoSummary; apiUrl: string }) {
+  const url = demo.homepage?.url;
+  if (!url) return <span className="text-xs text-slate-500">设置首页后可分享</span>;
+  return demo.accessMode === "password" ? (
+    <CopyProjectShareButton apiUrl={apiUrl} projectId={demo.projectId} url={url} />
+  ) : (
+    <CopyCodeButton compact tone="primary" label="复制首页" value={url} />
   );
 }

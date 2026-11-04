@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { type DemoSummary } from "./demo-list";
+import { ManagementIcon } from "./management-icon";
 import { DemoBrowser } from "./demo-browser";
 
 interface DemoManagerProps {
@@ -63,26 +64,27 @@ export function DemoManager({ apiUrl }: DemoManagerProps) {
   }, [endpoint]);
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-14">
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+    <main className="workspace">
+      <section>
+        <div className="workspace-header">
           <div>
-            <p className="text-sm font-semibold text-blue-700">我的 Demo</p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-balance">
-              管理已发布的 Demo
-            </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
-              Demo 通过 Codex 或 Claude Code 发布。点击项目名称可查看全部文件并复制文件链接。
-            </p>
+            <h1 className="page-title">我的 Demo</h1>
           </div>
-          <button
-            className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
-            disabled={state === "loading"}
-            onClick={() => void refresh()}
-            type="button"
-          >
-            重新加载
-          </button>
+          <div className="contents sm:flex sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-2">
+            {data !== null ? <Quota quota={data.quota} /> : null}
+            <button
+              className="button-secondary"
+              disabled={state === "loading"}
+              onClick={() => void refresh()}
+              type="button"
+            >
+              <ManagementIcon
+                name="refresh"
+                className={state === "loading" ? "animate-spin" : ""}
+              />
+              重新加载
+            </button>
+          </div>
         </div>
         <div aria-live="polite" className="sr-only">
           {notice}
@@ -111,7 +113,6 @@ function DemoContent({
 }) {
   return (
     <>
-      <Quota quota={data.quota} />
       {data.projects.length === 0 ? (
         <EmptyState />
       ) : (
@@ -122,46 +123,84 @@ function DemoContent({
 }
 
 function Quota({ quota }: { quota: DemoResponse["quota"] }) {
-  const projectPercent = (quota.projectCount / quota.projectLimit) * 100;
-  const storagePercent = (quota.storageBytes / quota.storageLimitBytes) * 100;
   return (
-    <section className="mt-8 grid gap-3 sm:grid-cols-2" aria-label="当前用量">
-      <QuotaCard
+    <section
+      aria-label="当前用量"
+      className="order-last flex w-full flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-500 sm:order-none sm:w-auto"
+    >
+      <QuotaMeter
         label="项目数"
         value={`${quota.projectCount} / ${quota.projectLimit}`}
-        percent={projectPercent}
+        percent={(quota.projectCount / quota.projectLimit) * 100}
       />
-      <QuotaCard
+      <QuotaMeter
         label="存储用量"
         value={`${formatStorage(quota.storageBytes)} / 2 GB`}
-        percent={storagePercent}
+        percent={(quota.storageBytes / quota.storageLimitBytes) * 100}
       />
     </section>
   );
 }
-
-function QuotaCard({ label, percent, value }: { label: string; percent: number; value: string }) {
+function QuotaMeter({ label, value, percent }: { label: string; value: string; percent: number }) {
   return (
-    <div className="rounded-xl bg-slate-50 p-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-sm text-slate-600">{label}</p>
-        <p className="font-semibold">{value}</p>
+    <div className="quota-meter">
+      <div>
+        <span>{label}</span>
+        <span className="ml-2 font-medium tabular-nums text-slate-700">{value}</span>
       </div>
-      <div aria-hidden="true" className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-        <div
-          className="h-full rounded-full bg-blue-700"
-          style={{ width: `${Math.min(percent, 100)}%` }}
-        />
-      </div>
+      <span className="quota-track" data-warning={percent >= 80} aria-hidden="true">
+        <span style={{ width: `${Math.min(percent, 100)}%` }} />
+      </span>
     </div>
   );
 }
 
 function DemoSkeleton() {
   return (
-    <div aria-label="正在加载 Demo" className="mt-8 grid gap-3">
-      <div className="h-28 animate-pulse rounded-xl bg-slate-100" />
-      <div className="h-60 animate-pulse rounded-xl bg-slate-100" />
+    <div aria-label="正在加载 Demo" aria-busy="true">
+      <div className="mb-4">
+        <input
+          aria-label="搜索项目名"
+          className="field sm:max-w-80"
+          type="search"
+          placeholder="搜索项目名"
+          disabled
+        />
+      </div>
+      <div className="table-shell hidden md:block">
+        <table className="data-table">
+          <thead>
+            <tr>
+              {["名称", "首页链接", "访问方式", "文件 / 大小", "时间", "分享"].map((label) => (
+                <th key={label} className="px-3 py-3">
+                  {label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+        </table>
+        {Array.from({ length: 8 }, (_, row) => (
+          <div
+            aria-hidden="true"
+            key={row}
+            className="flex h-16 items-center gap-12 border-t border-slate-200 px-3"
+          >
+            <span className="h-3 w-1/4 animate-pulse rounded bg-slate-100" />
+            <span className="h-3 w-1/6 animate-pulse rounded bg-slate-100" />
+            <span className="h-6 w-16 animate-pulse rounded bg-slate-100" />
+            <span className="ml-auto h-9 w-28 animate-pulse rounded bg-slate-100" />
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-3 md:hidden">
+        {[0, 1, 2].map((row) => (
+          <div
+            aria-hidden="true"
+            key={row}
+            className="h-52 animate-pulse rounded-lg border border-slate-200 bg-white"
+          />
+        ))}
+      </div>
     </div>
   );
 }

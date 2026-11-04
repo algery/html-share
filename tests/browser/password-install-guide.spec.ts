@@ -41,7 +41,7 @@ async function openGuide(page: Page, clipboardFails = false) {
     });
   }, clipboardFails);
   await page.goto(`${webUrl}/tokens`);
-  await expect(page.getByRole("heading", { name: "连接你的 Agent" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "我的 Token", exact: true })).toBeVisible();
   await expect(page.getByText("安装验收用户")).toBeVisible();
   await page.getByRole("button", { name: "查看 Codex / Claude Code 配置" }).click();
   await expect(page.getByRole("tabpanel")).toBeVisible();

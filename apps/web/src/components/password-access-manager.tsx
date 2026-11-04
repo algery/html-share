@@ -15,8 +15,7 @@ export interface ProjectAccessState {
   passwordStatus: "available" | "disabled" | "unavailable";
 }
 
-const secondaryButton =
-  "min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:text-slate-400";
+const secondaryButton = "button-secondary";
 
 export function PasswordAccessManager({
   access,
@@ -95,15 +94,10 @@ export function PasswordAccessManager({
   }
 
   return (
-    <section
-      aria-labelledby="access-title"
-      className="mt-7 rounded-xl border border-slate-200 p-4"
-      ref={sectionRef}
-      tabIndex={-1}
-    >
+    <section aria-labelledby="access-title" className="surface" ref={sectionRef} tabIndex={-1}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="font-semibold" id="access-title">
+          <h2 className="section-title" id="access-title">
             访问方式
           </h2>
           <p className="mt-1 text-sm text-slate-600">
@@ -158,7 +152,10 @@ export function PasswordAccessManager({
         <p className="mt-4 text-sm text-rose-700" role="alert">
           {error.message}
           {error.login ? (
-            <Link className="ml-2 font-semibold underline" href="/login">
+            <Link
+              className="ml-2 inline-flex min-h-10 items-center font-semibold underline"
+              href="/login"
+            >
               前往登录
             </Link>
           ) : null}

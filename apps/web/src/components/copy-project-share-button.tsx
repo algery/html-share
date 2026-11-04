@@ -44,6 +44,7 @@ export function CopyProjectShareButton({
   return (
     <CopyCodeButton
       compact
+      tone="primary"
       label="复制链接和密码"
       value={url}
       resolveValue={resolveShare}

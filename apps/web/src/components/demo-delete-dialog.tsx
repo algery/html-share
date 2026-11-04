@@ -53,7 +53,7 @@ export function DeleteEntry({
       className="fixed inset-0 z-10 flex items-end bg-slate-950/40 p-4 sm:items-center sm:justify-center"
       role="dialog"
     >
-      <section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+      <section className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
         <h2 className="text-lg font-semibold" id="delete-entry-title">
           删除 Demo
         </h2>

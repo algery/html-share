@@ -18,8 +18,7 @@ type DetailState =
   | { status: "loading" | "error" | "expired" | "missing" }
   | { status: "ready"; data: DemoDetailResponse };
 
-const buttonClass =
-  "min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700";
+const buttonClass = "button-secondary";
 const linkClass =
   "text-sm font-semibold text-blue-700 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700";
 
@@ -78,20 +77,17 @@ export function DemoDetail({ apiUrl, projectId }: { apiUrl: string; projectId: s
   }
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-14">
-      <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
-        <Link className={linkClass} href="/demos">
+    <main className="workspace">
+      <section className="min-w-0">
+        <Link className={`inline-flex min-h-10 items-center ${linkClass}`} href="/demos">
           返回我的 Demo
         </Link>
-        <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
+        <div className="workspace-header mt-4">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-blue-700">Demo 详情</p>
-            <h1 className="mt-3 break-all text-3xl font-semibold tracking-tight">
+            <h1 className="page-title">
               {state.status === "ready" ? state.data.project.displayName : "项目文件"}
             </h1>
-            <p className="mt-4 text-sm leading-6 text-slate-600">
-              查看全部已发布文件，复制链接即可分享给组织成员。
-            </p>
+            <p className="page-description">查看已发布文件，复制链接即可分享。</p>
           </div>
           <button
             className={buttonClass}
@@ -146,24 +142,28 @@ export function DemoDetail({ apiUrl, projectId }: { apiUrl: string; projectId: s
           </div>
         ) : null}
         {state.status === "ready" ? (
-          <>
-            <PasswordAccessManager
-              access={state.data.project}
-              apiUrl={apiUrl}
-              csrfToken={state.data.csrfToken}
-              onChanged={updateAccess}
-              projectId={projectId}
-            />
-            <ProjectHomepageManager
-              apiUrl={apiUrl}
-              projectId={projectId}
-              csrfToken={state.data.csrfToken}
-              homepage={state.data.project.homepage}
-              files={state.data.files}
-              onSaved={reloadHomepage}
-            />
-            <ProjectFiles data={state.data} />
-          </>
+          <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <section className="min-w-0">
+              <ProjectFiles data={state.data} />
+            </section>
+            <aside className="min-w-0 space-y-5">
+              <ProjectHomepageManager
+                apiUrl={apiUrl}
+                projectId={projectId}
+                csrfToken={state.data.csrfToken}
+                homepage={state.data.project.homepage}
+                files={state.data.files}
+                onSaved={reloadHomepage}
+              />
+              <PasswordAccessManager
+                access={state.data.project}
+                apiUrl={apiUrl}
+                csrfToken={state.data.csrfToken}
+                onChanged={updateAccess}
+                projectId={projectId}
+              />
+            </aside>
+          </div>
         ) : null}
       </section>
     </main>
@@ -180,7 +180,7 @@ function ProjectFiles({ data }: { data: DemoDetailResponse }) {
 
   return (
     <>
-      <dl className="mt-8 grid grid-cols-2 gap-4 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-4">
+      <dl className="mb-6 grid grid-cols-2 gap-x-5 gap-y-3 border-b border-slate-200 pb-5 text-sm sm:grid-cols-4">
         {[
           ["项目标识", data.project.projectId],
           ["文件数", String(data.project.fileCount)],
@@ -193,10 +193,10 @@ function ProjectFiles({ data }: { data: DemoDetailResponse }) {
           </div>
         ))}
       </dl>
-      <section className="mt-7" aria-labelledby="project-files-title">
+      <section aria-labelledby="project-files-title">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold" id="project-files-title">
+            <h2 className="section-title" id="project-files-title">
               全部文件（{data.files.length}）
             </h2>
             {data.files.length > 0 ? (
@@ -210,7 +210,7 @@ function ProjectFiles({ data }: { data: DemoDetailResponse }) {
               <span className="sr-only">搜索文件名</span>
               <input
                 autoComplete="off"
-                className="min-h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm focus:outline-2 focus:outline-offset-2 focus:outline-blue-700"
+                className="field"
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="搜索文件名或目录"
                 type="search"
@@ -227,7 +227,7 @@ function ProjectFiles({ data }: { data: DemoDetailResponse }) {
           <div className="mt-3 rounded-xl bg-slate-50 px-4 py-5 text-sm text-slate-600">
             <p>没有匹配的文件。</p>
             <button
-              className="mt-2 min-h-9 font-semibold text-blue-700 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+              className="mt-2 min-h-10 md:min-h-9 font-semibold text-blue-700 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
               onClick={() => setQuery("")}
               type="button"
             >
@@ -235,7 +235,7 @@ function ProjectFiles({ data }: { data: DemoDetailResponse }) {
             </button>
           </div>
         ) : (
-          <ul className="mt-3 divide-y divide-slate-200 rounded-xl border border-slate-200">
+          <ul className="mt-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
             {visibleFiles.map((file) => (
               <li className="min-w-0 px-3 py-2.5" key={file.url}>
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -246,7 +246,7 @@ function ProjectFiles({ data }: { data: DemoDetailResponse }) {
                 </div>
                 <div className="mt-1 grid min-w-0 gap-1.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                   <a
-                    className="min-w-0 select-text break-all font-mono text-xs leading-5 text-blue-700 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-blue-700"
+                    className="flex min-h-10 min-w-0 items-center select-text break-all md:block md:min-h-0 font-mono text-xs leading-5 text-slate-600 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-blue-700"
                     href={file.url}
                     target="_blank"
                     rel="noopener noreferrer"
