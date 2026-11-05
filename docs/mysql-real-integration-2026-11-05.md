@@ -46,3 +46,7 @@ applied_migrations   1
 本次 Compose 容器、独立数据卷、网络、PostgreSQL对照容器及临时合成配置在结束时删除，已验证镜像保留。原 `html-share-server-1`、`worker-1`、`postgres-1`、`minio-1` 仍健康，未重启或切换。
 
 原始本机日志保留在 `/tmp/html-share-mysql-real-20261105/`：`compose-up.log`、`actual-api.log`、`browser.log`、`contracts.log`、`repeat-migration.log`、`worker-metrics.log`、`cleanup.log`；含密钥的临时配置已删除。此测试使用钉钉模拟器和本机MinIO，不代表指定远程MySQL、真实钉钉或OSS/R2环境已验收。
+
+## 用户验收
+
+2026-11-05，用户完成当前 MySQL 验收环境测试，并明确要求将全部变更合并到主分支。验收环境继续保持 MySQL 运行；本次 Git 同步不重启服务，也不提交本机私有配置。
