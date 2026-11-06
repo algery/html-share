@@ -13,7 +13,7 @@ export function createMysqlAuthRepository(prisma: MysqlClient): AuthRepository {
         // update identity data until its complete source string is verified.
         await tx.$executeRaw`INSERT INTO tenants
           (id, name, dingtalk_app_key_ref, updated_at)
-          VALUES (${randomUUID()}, 'HTML Share organization', ${input.tenantAppKeyRef}, ${input.now})
+          VALUES (${randomUUID()}, 'demo share organization', ${input.tenantAppKeyRef}, ${input.now})
           ON DUPLICATE KEY UPDATE id = id`;
         const tenants = await tx.$queryRaw<{ id: string; appKey: string }[]>`
           SELECT id, dingtalk_app_key_ref AS appKey FROM tenants

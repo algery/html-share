@@ -4,7 +4,7 @@ const ERROR_MESSAGES = {
   project_upload_conflict: "该项目已有上传任务，请等待其完成或过期。",
   storage_quota_exceeded: "已达到存储配额上限。",
   upload_rate_limited: "上传操作过于频繁，请稍后重试。",
-  upload_protocol_unsupported: "请升级 HTML Share Skill 和服务端后重试。",
+  upload_protocol_unsupported: "请升级 demo share Skill 和服务端后重试。",
   upload_not_found: "上传任务不存在、已超过保留窗口或不属于当前用户。",
   upload_expired: "上传任务已过期，不能取回此任务密码；重新生成密码须发布者明确要求。",
   invalid_upload_input: "上传参数无效，请检查参数及同一幂等任务的选项是否一致。",
@@ -126,7 +126,7 @@ export async function requirePasswordCapabilities(request, url, token, options, 
     ?.properties;
   if (Object.keys(options).some((key) => !Object.hasOwn(properties ?? {}, key))) {
     throw new Error(
-      "服务端不支持所请求的密码选项，请升级 HTML Share 服务端后重试；尚未创建上传任务。",
+      "服务端不支持所请求的密码选项，请升级 demo share 服务端后重试；尚未创建上传任务。",
     );
   }
 }

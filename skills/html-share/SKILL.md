@@ -1,9 +1,9 @@
 ---
 name: html-share
-description: 将明确指定的本地静态 HTML Demo 发布到 HTML Share，或覆盖已有 Demo。用户说“分享这个 Demo”“发布 HTML”“更新这个 Demo 链接”时使用；先进行本地只读风险检查，有风险必须获得用户确认。
+description: 将明确指定的本地静态 HTML Demo 发布到 demo share，或覆盖已有 Demo。用户说“分享这个 Demo”“发布 HTML”“更新这个 Demo 链接”时使用；先进行本地只读风险检查，有风险必须获得用户确认。
 ---
 
-# HTML Share 发布
+# demo share 发布
 
 只发布用户明确指定的 publish_dir。确认目标 HTML、展示名称和操作：
 

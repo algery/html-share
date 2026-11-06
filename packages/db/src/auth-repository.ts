@@ -20,7 +20,7 @@ export function createAuthRepository(prisma: PrismaClient): AuthRepository {
         where: { dingtalkAppKeyRef: input.tenantAppKeyRef },
         create: {
           dingtalkAppKeyRef: input.tenantAppKeyRef,
-          name: "HTML Share organization",
+          name: "demo share organization",
         },
         update: {},
       });

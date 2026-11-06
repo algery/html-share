@@ -1,4 +1,4 @@
-# HTML Share 生产运行手册
+# demo share 生产运行手册
 
 ## 上线前置
 
@@ -257,7 +257,7 @@ MCP_ENDPOINT=https://app.example.com/mcp APP_HOST=app.example.com MCP_TOKEN='...
 
 上例中的 `sources.json` 形如 `{"index.html":"/secure/fixture/index.html"}`；示例摘要对应正文恰好为单字节 `x` 的文件，只用于说明字段，实跑前必须按实际原文件重新计算每项 SHA-256、Content-MD5、大小及规范化清单摘要。
 
-本地演练可运行下列脚本。它只向本机 HTML Share 开发栈创建一次性 MCP Token 和临时逐文件 fixture，不会把 Token、Cookie 或文件正文交给第三方容器；脚本在退出前撤销 Token、删除 fixture，并输出不含凭证的十个上传成功数、发布前 404、发布后 200 与 P95。该脚本仍会在本地数据库留下十个已发布的容量样本，演练完成后可按普通项目删除流程清理。
+本地演练可运行下列脚本。它只向本机 demo share 开发栈创建一次性 MCP Token 和临时逐文件 fixture，不会把 Token、Cookie 或文件正文交给第三方容器；脚本在退出前撤销 Token、删除 fixture，并输出不含凭证的十个上传成功数、发布前 404、发布后 200 与 P95。该脚本仍会在本地数据库留下十个已发布的容量样本，演练完成后可按普通项目删除流程清理。
 
 ```sh
 pnpm load:phase9:upload:local

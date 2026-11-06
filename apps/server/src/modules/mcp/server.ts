@@ -19,7 +19,7 @@ export function createHtmlShareMcpServer(input: {
   server.registerTool(
     "check_connection",
     {
-      description: "验证 HTML Share MCP 凭证并返回当前身份和到期时间。",
+      description: "验证 demo share MCP 凭证并返回当前身份和到期时间。",
       inputSchema: z.object({}).strict(),
     },
     async () => {

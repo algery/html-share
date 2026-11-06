@@ -1,0 +1,98 @@
+[
+  {
+    "browser": "chromium",
+    "width": 1440,
+    "route": "/login",
+    "pageWidth": 1440,
+    "viewport": 1440,
+    "brandText": "demo share",
+    "logoWidth": 28,
+    "brandLeft": 545,
+    "brandRight": 668.03125,
+    "title": "demo share"
+  },
+  {
+    "browser": "chromium",
+    "width": 1440,
+    "route": "/demos",
+    "pageWidth": 1440,
+    "viewport": 1440,
+    "brandText": "demo share",
+    "logoWidth": 28,
+    "brandLeft": 104,
+    "brandRight": 227.03125,
+    "title": "demo share"
+  },
+  {
+    "browser": "chromium",
+    "width": 375,
+    "route": "/login",
+    "pageWidth": 375,
+    "viewport": 375,
+    "brandText": "demo share",
+    "logoWidth": 28,
+    "brandLeft": 33,
+    "brandRight": 156.03125,
+    "title": "demo share"
+  },
+  {
+    "browser": "chromium",
+    "width": 375,
+    "route": "/demos",
+    "pageWidth": 375,
+    "viewport": 375,
+    "brandText": "demo share",
+    "logoWidth": 28,
+    "brandLeft": 16,
+    "brandRight": 139.03125,
+    "title": "demo share"
+  },
+  {
+    "browser": "webkit",
+    "width": 1440,
+    "route": "/login",
+    "pageWidth": 1440,
+    "viewport": 1440,
+    "brandText": "demo share",
+    "logoWidth": 28,
+    "brandLeft": 545,
+    "brandRight": 668.015625,
+    "title": "demo share"
+  },
+  {
+    "browser": "webkit",
+    "width": 1440,
+    "route": "/demos",
+    "pageWidth": 1440,
+    "viewport": 1440,
+    "brandText": "demo share",
+    "logoWidth": 28,
+    "brandLeft": 104,
+    "brandRight": 227.015625,
+    "title": "demo share"
+  },
+  {
+    "browser": "webkit",
+    "width": 375,
+    "route": "/login",
+    "pageWidth": 375,
+    "viewport": 375,
+    "brandText": "demo share",
+    "logoWidth": 28,
+    "brandLeft": 33,
+    "brandRight": 156.015625,
+    "title": "demo share"
+  },
+  {
+    "browser": "webkit",
+    "width": 375,
+    "route": "/demos",
+    "pageWidth": 375,
+    "viewport": 375,
+    "brandText": "demo share",
+    "logoWidth": 28,
+    "brandLeft": 16,
+    "brandRight": 139.015625,
+    "title": "demo share"
+  }
+]

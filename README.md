@@ -1,6 +1,8 @@
-# HTML Share
+# demo share
 
 HTML 文件发布、受控分享和项目管理。文件正文存入私有对象存储；平台数据通过 env 选择 PostgreSQL 18 或 MySQL 8.4，Web、HTTP 和 MCP 使用同一套业务协议。
+
+产品展示名称为 `demo share`。为兼容已有客户端与部署，`@html-share/*` 包名、MCP 连接名 `html-share`、Skill 安装目录和 ZIP 名、环境变量、Cookie、数据库及部署标识保持不变。
 
 ## 本地运行
 

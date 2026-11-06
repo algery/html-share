@@ -12,8 +12,12 @@ declare global {
 }
 
 export const metadata: Metadata = {
-  description: "HTML Share 管理端",
-  title: "HTML Share",
+  description: "demo share 管理端",
+  title: "demo share",
+  icons: {
+    icon: { url: "/brand/demo-share-icon.png", type: "image/png", sizes: "32x32" },
+    apple: { url: "/brand/demo-share-apple-icon.png", type: "image/png", sizes: "180x180" },
+  },
 };
 
 type RootLayoutProps = Readonly<{
