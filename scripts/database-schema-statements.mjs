@@ -18,8 +18,9 @@ export function unsupportedMysqlStatements(sql) {
       if (JSON.stringify(statement) !== JSON.stringify(["set", "time_zone", "=", "'+00:00'"]))
         issues.push("Unsupported MySQL session statement");
     } else if (verb === "create" && kind === "table") {
-      if (created.has(name)) issues.push(`Duplicate MySQL table creation: ${name}`);
-      created.add(name);
+      const tableName = name === "if" ? statement[5] : name;
+      if (created.has(tableName)) issues.push(`Duplicate MySQL table creation: ${tableName}`);
+      created.add(tableName);
     } else if (verb === "create" && (kind === "index" || (kind === "unique" && name === "index"))) {
       // The exact index set is checked against the models separately.
     } else if (verb === "alter" && kind === "table") {
@@ -70,7 +71,37 @@ export function unsupportedPostgresIdentityTail(sql) {
       statement[0] === "create" && statement[1] === "table" && statement[5] === "database_identity";
     const insert =
       statement[0] === "insert" && statement[1] === "into" && statement[2] === "database_identity";
-    if (!create && !insert)
+    const squareCreate =
+      statement[0] === "create" &&
+      statement[1] === "table" &&
+      ["project_square_settings", "project_square_audiences", "square_audit_logs"].includes(
+        statement[5],
+      );
+    const squareIndex =
+      statement[0] === "create" &&
+      statement[1] === "index" &&
+      statement[6] === "on" &&
+      ["project_square_settings", "project_square_audiences", "square_audit_logs"].includes(
+        statement[7],
+      );
+    const unionColumn =
+      JSON.stringify(statement) ===
+      JSON.stringify([
+        "alter",
+        "table",
+        "users",
+        "add",
+        "column",
+        "if",
+        "not",
+        "exists",
+        "dingtalk_union_id",
+        "varchar",
+        "(",
+        "191",
+        ")",
+      ]);
+    if (!create && !insert && !squareCreate && !squareIndex && !unionColumn)
       issues.push("Unsupported statement after PostgreSQL identity migration");
   }
   return issues;

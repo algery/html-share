@@ -35,7 +35,11 @@ export function createMysqlAuthRepository(prisma: MysqlClient): AuthRepository {
         assertSameText(user.dingtalkUserId, input.dingtalkUserId);
         await tx.user.update({
           where: { id: user.id },
-          data: { displayName: input.displayName, lastLoginAt: input.now },
+          data: {
+            displayName: input.displayName,
+            lastLoginAt: input.now,
+            ...(input.dingtalkUnionId ? { dingtalkUnionId: input.dingtalkUnionId } : {}),
+          },
         });
         return { id: user.id };
       });
@@ -97,6 +101,9 @@ export function createMysqlAuthRepository(prisma: MysqlClient): AuthRepository {
         user: {
           id: session.user.id,
           dingtalkUserId: session.user.dingtalkUserId,
+          ...(session.user.dingtalkUnionId
+            ? { dingtalkUnionId: session.user.dingtalkUnionId }
+            : {}),
           displayName: session.user.displayName,
         },
       };

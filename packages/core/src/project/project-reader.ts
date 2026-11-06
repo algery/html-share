@@ -6,6 +6,7 @@ export interface PublishedDemoFile {
 }
 
 export interface ManagedDemoProject {
+  squareEnabled?: boolean;
   accessMode: "organization" | "password";
   createdAt: Date;
   displayName: string;

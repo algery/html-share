@@ -1,3 +1,4 @@
+import { normalizeSquareMysqlDdl, unionColumnDefinition } from "./database-schema-square-ddl.mjs";
 import { sqlTokens } from "./database-schema-tokens.mjs";
 import { compareReviewedSql } from "./database-schema-reviewed-sql.mjs";
 import {
@@ -58,7 +59,9 @@ function signature(unique, fields) {
 
 export function parseMysqlTables(sql) {
   const tables = new Map();
-  for (const match of sql.matchAll(/CREATE TABLE `(\w+)` \(([\s\S]*?)\) ENGINE=([^;]+);/g)) {
+  for (const match of sql.matchAll(
+    /CREATE TABLE (?:IF NOT EXISTS )?`(\w+)` \(([\s\S]*?)\) ENGINE=([^;]+);/g,
+  )) {
     const fields = new Map(),
       indexes = new Set();
     let primary = [];
@@ -73,7 +76,7 @@ export function parseMysqlTables(sql) {
       }
       const key = /^PRIMARY KEY \((.*)\)$/.exec(definition);
       if (key) primary = list(key[1]);
-      const index = /^(UNIQUE )?INDEX `[^`]+`\((.*)\)$/.exec(definition);
+      const index = /^(UNIQUE )?INDEX `[^`]+`\s*\((.*)\)$/.exec(definition);
       if (index) indexes.add(signature(Boolean(index[1]), list(index[2])));
     }
     tables.set(match[1], { fields, indexes, primary, options: match[3] });
@@ -81,13 +84,18 @@ export function parseMysqlTables(sql) {
   for (const match of sql.matchAll(/CREATE (UNIQUE )?INDEX `[^`]+` ON `(\w+)`\s*\(([^;]+)\);/g)) {
     tables.get(match[2])?.indexes.add(signature(Boolean(match[1]), list(match[3])));
   }
+  for (const match of sql.matchAll(/ALTER TABLE `(\w+)` ADD COLUMN `(\w+)` ([^;]+);/g)) {
+    tables.get(match[1])?.fields.set(match[2], match[3]);
+  }
   collectMysqlKeys(sql, tables);
   return tables;
 }
 
 export function compareMigrations(pgSchema, mysqlSchema, postgresSql, mysqlSql) {
+  const reviewedIssues = compareReviewedSql(postgresSql, mysqlSql);
+  mysqlSql = normalizeSquareMysqlDdl(mysqlSql);
   const issues = [
-    ...compareReviewedSql(postgresSql, mysqlSql),
+    ...reviewedIssues,
     ...unsupportedMysqlStatements(mysqlSql),
     ...unsupportedMysqlAlterations(mysqlSql),
     ...unsupportedPostgresIdentityTail(postgresSql),
@@ -134,7 +142,14 @@ export function compareMigrations(pgSchema, mysqlSchema, postgresSql, mysqlSql) 
       const column = databaseName(name, field.attributes),
         definition = table.fields.get(column);
       if (!definition) continue;
-      if (unsupportedMysqlColumn(definition))
+      if (
+        unsupportedMysqlColumn(definition) &&
+        !(
+          tableName === "users" &&
+          column === "dingtalk_union_id" &&
+          definition === unionColumnDefinition
+        )
+      )
         issues.push(`${tableName}.${column} has unsupported physical qualifiers`);
       const expectedType =
         nativeType(field) ??

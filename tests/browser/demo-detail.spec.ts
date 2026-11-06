@@ -44,6 +44,22 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/projects/abc12", (route) =>
     route.fulfill({ json: { csrfToken: "test-only", project, files } }),
   );
+  await page.route("**/api/projects/abc12/square", (route) =>
+    route.fulfill({
+      json: {
+        csrfToken: "test-only",
+        settings: {
+          enabled: false,
+          audienceType: null,
+          departmentIds: [],
+          userIds: [],
+          settingsVersion: 0,
+          selectedDepartments: [],
+          selectedUsers: [],
+        },
+      },
+    }),
+  );
 });
 
 async function mockClipboard(page: Page, fail = false) {
@@ -207,7 +223,7 @@ test("加载、失败重试、空清单及覆盖后刷新", async ({ page }) => 
       json: { project: { ...project, fileCount: 1, totalSize: 1 }, files: [replacement] },
     }),
   );
-  await page.getByRole("button", { name: "重新加载" }).click();
+  await page.getByRole("button", { name: "重新加载", exact: true }).click();
   await expect(page.getByRole("heading", { name: "全部文件（1）" })).toBeVisible();
   await expect(page.getByRole("listitem")).toHaveCount(1);
   await expect(page.getByRole("listitem")).toContainText("new.html");

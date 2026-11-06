@@ -6,6 +6,8 @@ import Fastify, { LogController, type FastifyInstance } from "fastify";
 
 import type {
   AuthSessionService,
+  SquareService,
+  DirectoryGateway,
   McpTokenService,
   ProjectDeletionService,
   ProjectManagementReader,
@@ -22,6 +24,8 @@ import { registerAdminRoutes } from "./modules/admin/routes.js";
 import { sendContentNotFound } from "./modules/content/error-pages.js";
 import { registerContentRoutes } from "./modules/content/routes.js";
 import { registerMcpRoutes } from "./modules/mcp/routes.js";
+import { registerSquareRoutes } from "./modules/square/routes.js";
+import { registerDirectoryRoutes } from "./modules/directory/routes.js";
 import { registerProjectRoutes } from "./modules/projects/routes.js";
 import { registerProjectDeleteRoute } from "./modules/projects/delete-route.js";
 import { registerProjectPasswordAccessRoute } from "./modules/projects/password-access-route.js";
@@ -40,6 +44,8 @@ export interface ServerAppOptions {
   demoInAppClientId?: string;
   demoInAppCorpId?: string;
   demoWebUrl: string;
+  square?: SquareService;
+  directory?: DirectoryGateway;
   projectDeletion?: ProjectDeletionService;
   passwordAccess?: PasswordAccessService;
   passwordManagement?: PasswordManagementService;
@@ -180,6 +186,19 @@ export function buildServerApp(options: ServerAppOptions): FastifyInstance {
       ? {}
       : { passwordManagement: options.passwordManagement }),
     sessions: options.authSessions,
+  });
+  const squareOptions = {
+    appHost: options.appHost,
+    appWebUrl: options.appWebUrl,
+    sessions: options.authSessions,
+  };
+  registerSquareRoutes(app, {
+    ...squareOptions,
+    ...(options.square ? { square: options.square } : {}),
+  });
+  registerDirectoryRoutes(app, {
+    ...squareOptions,
+    ...(options.directory ? { directory: options.directory } : {}),
   });
   registerAdminRoutes(app, {
     appHost: options.appHost,

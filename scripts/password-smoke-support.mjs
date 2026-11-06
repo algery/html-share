@@ -1,3 +1,4 @@
+import { squareHarnessOptions } from "./project-square-harness.mjs";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -144,6 +145,7 @@ export async function createHarness(config, check, options = {}) {
       demoInAppClientId: "password-test-client",
       demoInAppCorpId: "password-test-corp",
       authSessions: sessions,
+      ...squareHarnessOptions(options, repositories, demoUrl),
       dingtalk: createSimulatorDingTalkClient(),
       logger: options.logger ?? false,
       readiness: readiness?.serverReadiness,

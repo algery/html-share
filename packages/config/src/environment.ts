@@ -164,8 +164,17 @@ const workerSchema = z
   })
   .superRefine((value, context) => validateObjectStorageEnvironment(context, value));
 
+const directoryEnvironment = {
+  DINGTALK_DIRECTORY_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  DINGTALK_CONTACT_API_BASE_URL: httpUrl.default("https://oapi.dingtalk.com"),
+};
+
 const dingTalkSchema = z.discriminatedUnion("DINGTALK_AUTH_MODE", [
   z.object({
+    ...directoryEnvironment,
     DINGTALK_API_BASE_URL: httpUrl.optional(),
     DINGTALK_APP_ID: optionalNonEmpty,
     DINGTALK_AUTH_MODE: z.literal("simulator"),
@@ -175,6 +184,7 @@ const dingTalkSchema = z.discriminatedUnion("DINGTALK_AUTH_MODE", [
     DINGTALK_EXTERNAL_AUTHORIZE_URL: httpUrl.optional(),
   }),
   z.object({
+    ...directoryEnvironment,
     DINGTALK_API_BASE_URL: httpUrl,
     DINGTALK_APP_ID: z.string().trim().min(1),
     DINGTALK_AUTH_MODE: z.literal("live"),

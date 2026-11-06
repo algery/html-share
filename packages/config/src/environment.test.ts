@@ -149,6 +149,8 @@ describe("environment validation", () => {
     ).toEqual({
       DINGTALK_AUTH_MODE: "simulator",
       DINGTALK_CLIENT_SECRET: undefined,
+      DINGTALK_DIRECTORY_ENABLED: false,
+      DINGTALK_CONTACT_API_BASE_URL: "https://oapi.dingtalk.com",
     });
   });
 

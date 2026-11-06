@@ -80,12 +80,21 @@ export function ManagementShell({ apiUrl, children }: ManagementShellProps) {
             </span>
             HTML Share
           </Link>
-          <nav aria-label="管理导航" className="flex min-h-10 items-center gap-1">
+          <nav
+            aria-label="管理导航"
+            className="order-last flex min-h-10 w-full items-center gap-1 sm:order-none sm:w-auto"
+          >
             <NavigationLink
               active={pathname === "/demos" || pathname.startsWith("/demos/")}
               href="/demos"
             >
               我的 Demo
+            </NavigationLink>
+            <NavigationLink
+              active={pathname === "/square" || pathname.startsWith("/square/")}
+              href="/square"
+            >
+              项目广场
             </NavigationLink>
             <NavigationLink active={pathname === "/tokens"} href="/tokens">
               我的 Token

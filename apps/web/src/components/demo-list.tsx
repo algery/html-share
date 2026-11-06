@@ -9,6 +9,7 @@ import { AccessModeBadge } from "./access-mode-badge";
 
 export interface DemoSummary {
   accessMode: "organization" | "password";
+  squareEnabled?: boolean;
   createdAt: string;
   displayName: string;
   fileCount: number;
@@ -108,8 +109,9 @@ function DemoRow({
       <td className="px-3 py-3">
         <DemoHomepageLink demo={demo} />
       </td>
-      <td className="px-3 py-3">
+      <td className="px-1 py-3">
         <AccessModeBadge mode={demo.accessMode} />
+        <DemoSquareStatus demo={demo} />
       </td>
       <td className="px-3 py-3 whitespace-nowrap text-xs leading-5">
         <p>{demo.fileCount} 个文件</p>
@@ -158,6 +160,7 @@ function DemoCard({
         </div>
         <AccessModeBadge mode={demo.accessMode} />
       </div>
+      <DemoSquareStatus demo={demo} />
       <p className="mt-2 text-xs text-slate-500">
         {demo.fileCount} 个文件 · {formatBytes(demo.totalSize)}
       </p>
@@ -218,5 +221,21 @@ export function formatBytes(bytes: number) {
 export function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "short", timeStyle: "short" }).format(
     new Date(value),
+  );
+}
+
+function DemoSquareStatus({ demo }: { demo: DemoSummary }) {
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-1 text-xs leading-4">
+      <span className={demo.squareEnabled ? "text-emerald-700" : "text-slate-500"}>
+        {demo.squareEnabled ? "已共享" : "未共享"}
+      </span>
+      <Link
+        className="inline-flex min-h-10 items-center text-blue-700 hover:underline focus-visible:outline-2 focus-visible:outline-blue-700 md:min-h-6"
+        href={`/demos/${demo.projectId}#project-square`}
+      >
+        广场设置
+      </Link>
+    </div>
   );
 }

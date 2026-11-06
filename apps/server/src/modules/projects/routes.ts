@@ -123,6 +123,7 @@ export function registerProjectRoutes(app: FastifyInstance, options: ProjectRout
       }),
       projects: result.projects.map((project) => ({
         accessMode: project.accessMode,
+        squareEnabled: project.squareEnabled ?? false,
         createdAt: project.createdAt.toISOString(),
         displayName: project.displayName,
         fileCount: project.fileCount,

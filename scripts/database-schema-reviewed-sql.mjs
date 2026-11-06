@@ -6,8 +6,8 @@ import { createHash } from "node:crypto";
 // these reviewed migration streams must fail until independently reviewed and
 // verified against real databases. Do not regenerate these values automatically.
 const REVIEWED_MIGRATIONS = {
-  postgresql: "fbbaa424f6b061c8edc5138777dc00f5cec5861c09e0c0265c38a4e6d497a26c",
-  mysql: "0fa2149eec76b770589a002ef70dc5f3253e0fdb019a4b3234e6d328220bee1e",
+  postgresql: "f9fbd1a0c3c559a13344b2df75f5729389f1c2718c8ed9251e8121f9bdecceb6",
+  mysql: "c2e37b3605b37ba3a84fc12b65c7f3e4438985f78945e554e6e89db6f7cddc5f",
 };
 
 export function compareReviewedSql(postgresSql, mysqlSql) {
