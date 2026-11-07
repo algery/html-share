@@ -130,3 +130,58 @@ test("发布命令复制失败时保留可手动复制的完整文本", async ({
   await expect(access.locator("pre")).toHaveText(publishCommand);
   expect(unexpectedRequests).toEqual([]);
 });
+
+test("双宿主手动添加 MCP 参数使用当前服务地址和 Token 占位符", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 900 });
+  const unexpectedRequests = await openGuide(page);
+  const panel = page.getByRole("tabpanel");
+
+  for (const host of ["Codex", "Claude Code"] as const) {
+    await page.getByRole("tab", { name: host, exact: true }).click();
+    const download = await panel
+      .getByRole("link", { name: `下载 ${host} 安装包` })
+      .getAttribute("href");
+    if (!download) throw new Error("安装包缺少服务地址");
+    const mcpUrl = new URL("/mcp", new URL(download, webUrl)).href;
+    const manual = panel.locator("details").filter({ hasText: "手动添加 MCP" });
+    await manual.getByText("手动添加 MCP", { exact: true }).click();
+    await expect(manual).toHaveAttribute("open", "");
+    await expect(manual.getByText(mcpUrl, { exact: true })).toBeVisible();
+    await expect(manual.getByText("html-share", { exact: true }).first()).toBeVisible();
+    await expect(manual.getByText("Streamable HTTP", { exact: host === "Codex" })).toBeVisible();
+    await expect(manual.getByText("Authorization", { exact: true })).toBeVisible();
+    await expect(manual.getByText("Bearer <刚创建的 Token>", { exact: true })).toBeVisible();
+
+    if (host === "Codex") {
+      await expect(manual.getByText("~/.codex/config.toml", { exact: true })).toBeVisible();
+      const config = `[mcp_servers.html-share]\nurl = "${mcpUrl}"\nbearer_token_env_var = "HTML_SHARE_MCP_TOKEN"`;
+      await expect(manual.locator("pre")).toHaveText(config);
+      await manual.getByRole("button", { name: "复制配置" }).click();
+      await expect(page.locator("html")).toHaveAttribute("data-copied", config);
+    } else {
+      await expect(manual.getByText(".mcp.json", { exact: true })).toBeVisible();
+      await expect(
+        manual.getByText("Bearer ${HTML_SHARE_MCP_TOKEN}", { exact: true }),
+      ).toBeVisible();
+      const config = panel.locator("pre").filter({ hasText: '"mcpServers"' });
+      const configText = (await config.textContent()) ?? "";
+      expect(JSON.parse(configText)).toEqual({
+        mcpServers: {
+          "html-share": {
+            type: "http",
+            url: mcpUrl,
+            headers: { Authorization: "Bearer ${HTML_SHARE_MCP_TOKEN}" },
+          },
+        },
+      });
+      await config.locator("xpath=..").getByRole("button", { name: "复制配置" }).click();
+      await expect(page.locator("html")).toHaveAttribute("data-copied", configText);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await manual.getByText("手动添加 MCP", { exact: true }).click();
+  }
+
+  expect(unexpectedRequests).toEqual([]);
+});
