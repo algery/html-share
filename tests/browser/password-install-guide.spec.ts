@@ -49,7 +49,7 @@ async function openGuide(page: Page, clipboardFails = false) {
     "page",
   );
   await expect(account.getByRole("button", { name: "退出" })).toBeVisible();
-  await page.getByRole("button", { name: "查看 Codex / Claude Code 配置" }).click();
+  await page.getByRole("button", { name: "手动添加 MCP / 安装 Skill" }).click();
   await expect(page.getByRole("tabpanel")).toBeVisible();
   return unexpectedRequests;
 }
@@ -65,7 +65,7 @@ for (const width of [1280, 375]) {
       const panel = page.getByRole("tabpanel");
       const install = panel
         .locator("section")
-        .filter({ has: page.getByRole("heading", { name: "1. 下载并安装 Skill" }) });
+        .filter({ has: page.getByRole("heading", { name: "2. 让 Agent 安装 Skill" }) });
       const access = panel
         .locator("section")
         .filter({ has: page.getByRole("heading", { name: "指定链接访问方式" }) });
@@ -73,13 +73,43 @@ for (const width of [1280, 375]) {
         "href",
         new RegExp(`/api/skills/${host === "Codex" ? "codex" : "claude-code"}$`),
       );
-      await expect(install.locator("pre")).toHaveText(
+      const advanced = panel.locator("details").filter({ hasText: "高级配置（命令行和配置文件）" });
+      await expect(advanced).not.toHaveAttribute("open", "");
+      await advanced.locator("summary").click();
+      const unzip = advanced.locator("pre").filter({ hasText: "unzip -o" });
+      await expect(unzip).toHaveText(
         `unzip -o ${host === "Codex" ? "codex" : "claude-code"}-html-share.zip -d ~`,
       );
       await expect(panel).toContainText("HTML_SHARE_MCP_TOKEN");
       await expect(panel).toContainText(host === "Codex" ? "codex mcp list" : "claude mcp list");
+      const mcpAddress = panel
+        .getByRole("region", { name: "1. 手动添加 MCP" })
+        .locator("dd")
+        .nth(2);
+      const mcpUrl = (await mcpAddress.textContent()) ?? "";
+      const config = advanced.locator("pre").filter({
+        hasText: host === "Codex" ? "[mcp_servers.html-share]" : '"mcpServers"',
+      });
+      const configText = (await config.textContent()) ?? "";
+      if (host === "Codex") {
+        expect(configText).toBe(
+          `[mcp_servers.html-share]\nurl = "${mcpUrl}"\nbearer_token_env_var = "HTML_SHARE_MCP_TOKEN"`,
+        );
+      } else {
+        expect(JSON.parse(configText)).toEqual({
+          mcpServers: {
+            "html-share": {
+              type: "http",
+              url: mcpUrl,
+              headers: { Authorization: "Bearer ${HTML_SHARE_MCP_TOKEN}" },
+            },
+          },
+        });
+      }
+      await config.locator("xpath=..").getByRole("button", { name: "复制配置" }).click();
+      await expect(page.locator("html")).toHaveAttribute("data-copied", configText);
       if (host === "Claude Code") {
-        await expect(panel.getByRole("heading", { name: "2. 连接 Claude Code MCP" })).toBeVisible();
+        await expect(panel.getByRole("heading", { name: "连接 Claude Code MCP" })).toBeVisible();
         const shellText = "export HTML_SHARE_MCP_TOKEN='<刚创建的 Token>'\nclaude mcp list";
         const shell = panel.locator("pre").filter({ hasText: "export HTML_SHARE_MCP_TOKEN" });
         expect(await shell.textContent()).toBe(shellText);
@@ -108,7 +138,7 @@ for (const width of [1280, 375]) {
         };
       };
       expect(await access.locator("pre").evaluate(cardStyle)).toEqual(
-        await install.locator("pre").evaluate(cardStyle),
+        await unzip.evaluate(cardStyle),
       );
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
@@ -119,6 +149,7 @@ for (const width of [1280, 375]) {
         path: test.info().outputPath(`${filename}-page.png`),
         fullPage: true,
       });
+      await advanced.locator("summary").click();
     }
     expect(unexpectedRequests).toEqual([]);
     await expect(page.getByRole("heading", { name: "请立即复制 Token" })).toHaveCount(0);
@@ -137,56 +168,47 @@ test("发布命令复制失败时保留可手动复制的完整文本", async ({
   expect(unexpectedRequests).toEqual([]);
 });
 
-test("双宿主手动添加 MCP 参数使用当前服务地址和 Token 占位符", async ({ page }) => {
+test("两端优先显示手动参数，并能复制只使用本地 ZIP 的安装提示词", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 900 });
   const unexpectedRequests = await openGuide(page);
   const panel = page.getByRole("tabpanel");
 
   for (const host of ["Codex", "Claude Code"] as const) {
     await page.getByRole("tab", { name: host, exact: true }).click();
-    const download = await panel
+    const install = panel.getByRole("region", { name: "2. 让 Agent 安装 Skill" });
+    const download = await install
       .getByRole("link", { name: `下载 ${host} 安装包` })
       .getAttribute("href");
     if (!download) throw new Error("安装包缺少服务地址");
     const mcpUrl = new URL("/mcp", new URL(download, webUrl)).href;
-    const manual = panel.locator("details").filter({ hasText: "手动添加 MCP" });
-    await manual.getByText("手动添加 MCP", { exact: true }).click();
-    await expect(manual).toHaveAttribute("open", "");
+    const manual = panel.getByRole("region", { name: "1. 手动添加 MCP" });
     await expect(manual.getByText(mcpUrl, { exact: true })).toBeVisible();
-    await expect(manual.getByText("html-share", { exact: true }).first()).toBeVisible();
-    await expect(manual.getByText("Streamable HTTP", { exact: host === "Codex" })).toBeVisible();
+    await expect(manual.getByText("html-share", { exact: true })).toBeVisible();
+    await expect(manual.getByText("Streamable HTTP", { exact: false })).toBeVisible();
     await expect(manual.getByText("Authorization", { exact: true })).toBeVisible();
     await expect(manual.getByText("Bearer <刚创建的 Token>", { exact: true })).toBeVisible();
+    expect((await manual.boundingBox())?.y).toBeLessThan((await install.boundingBox())?.y ?? 0);
 
-    if (host === "Codex") {
-      await expect(manual.getByText("~/.codex/config.toml", { exact: true })).toBeVisible();
-      const config = `[mcp_servers.html-share]\nurl = "${mcpUrl}"\nbearer_token_env_var = "HTML_SHARE_MCP_TOKEN"`;
-      await expect(manual.locator("pre")).toHaveText(config);
-      await manual.getByRole("button", { name: "复制配置" }).click();
-      await expect(page.locator("html")).toHaveAttribute("data-copied", config);
-    } else {
-      await expect(manual.getByText(".mcp.json", { exact: true })).toBeVisible();
-      await expect(
-        manual.getByText("Bearer ${HTML_SHARE_MCP_TOKEN}", { exact: true }),
-      ).toBeVisible();
-      const config = panel.locator("pre").filter({ hasText: '"mcpServers"' });
-      const configText = (await config.textContent()) ?? "";
-      expect(JSON.parse(configText)).toEqual({
-        mcpServers: {
-          "html-share": {
-            type: "http",
-            url: mcpUrl,
-            headers: { Authorization: "Bearer ${HTML_SHARE_MCP_TOKEN}" },
-          },
-        },
-      });
-      await config.locator("xpath=..").getByRole("button", { name: "复制配置" }).click();
-      await expect(page.locator("html")).toHaveAttribute("data-copied", configText);
-    }
+    const prompt = install.locator("pre");
+    await expect(prompt).toContainText(
+      host === "Codex" ? "codex-html-share.zip" : "claude-code-html-share.zip",
+    );
+    await expect(prompt).toContainText(
+      host === "Codex" ? "~/.codex/skills/html-share" : "~/.claude/skills/html-share",
+    );
+    await expect(prompt).toContainText(mcpUrl);
+    await expect(prompt).toContainText("不要自行下载 Skill");
+    await expect(prompt).toContainText("请我提供本地 ZIP 路径");
+    await expect(prompt).toContainText("不要让我把 Token 发到聊天中");
+    await expect(prompt).not.toContainText("/api/skills/");
+    await install.getByRole("button", { name: "复制 Agent 安装提示词" }).click();
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-copied",
+      (await prompt.textContent()) ?? "",
+    );
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
-    await manual.getByText("手动添加 MCP", { exact: true }).click();
   }
 
   expect(unexpectedRequests).toEqual([]);
