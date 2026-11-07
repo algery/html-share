@@ -51,3 +51,16 @@ pnpm db:test:compatibility
 完整矩阵的隔离地址、变量、资源预算和真实结果见 [数据库兼容验收记录](docs/database-compatibility-evidence.md)。普通 `pnpm test` 可能跳过未配置的数据库集成测试，不能替代强制矩阵。
 
 真实钉钉、OSS/R2、正式域名、1Panel/OpenResty 与真机验收按原待办独立追踪；本地模拟器和 MinIO 结果不代表这些外部环境已验收。
+
+### 项目广场首页截图
+
+本地 Compose 可以叠加截图服务。使用 PostgreSQL 时选 `compose.yaml`，使用
+MySQL 时选 `compose.mysql.yaml`。继续使用当前部署的环境变量文件和 Compose 项目名。
+
+```bash
+docker compose -f compose.mysql.yaml -f compose.square-cover.yaml up -d --build
+```
+
+截图容器仅通过专用 Unix socket 接收当前 revision 的文件。容器没有网络、
+数据库或对象存储配置。启用后 Worker 会为既有共享项目分批生成封面，打开
+广场并重新加载可查看生成结果。目标部署环境须支持 Chromium 用户命名空间沙箱。

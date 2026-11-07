@@ -9,6 +9,7 @@ import { runPasswordAccessCleanup } from "./jobs/cleanup-password-access.js";
 import { runNextOrphanObjectSweep } from "./jobs/sweep-orphan-objects.js";
 import { finalizeNextUpload } from "./jobs/finalize-upload.js";
 import { runParallelFinalizers } from "./jobs/parallel-finalization.js";
+import { createSquareCoverJobs } from "./jobs/square-cover.js";
 
 function loadEnvironment() {
   try {
@@ -50,19 +51,18 @@ const repository = repositories.uploads;
 const cleanupRepository = repositories.cleanup;
 const orphanSweepRepository = repositories.orphanSweep;
 const passwordCleanupRepository = repositories.passwordCleanup;
-const observedStorage = observeObjectStoreActivity(
-  createObjectStore({
-    accessKeyId: environment.OBJECT_STORAGE_ACCESS_KEY_ID,
-    accessKeySecret: environment.OBJECT_STORAGE_ACCESS_KEY_SECRET,
-    bucket: environment.OBJECT_STORAGE_BUCKET,
-    endpoint: environment.OBJECT_STORAGE_ENDPOINT,
-    provider: environment.OBJECT_STORAGE_PROVIDER,
-    region: environment.OBJECT_STORAGE_REGION,
-    ...(environment.OBJECT_STORAGE_PUBLIC_ENDPOINT === undefined
-      ? {}
-      : { publicEndpoint: environment.OBJECT_STORAGE_PUBLIC_ENDPOINT }),
-  }),
-);
+const objectStore = createObjectStore({
+  accessKeyId: environment.OBJECT_STORAGE_ACCESS_KEY_ID,
+  accessKeySecret: environment.OBJECT_STORAGE_ACCESS_KEY_SECRET,
+  bucket: environment.OBJECT_STORAGE_BUCKET,
+  endpoint: environment.OBJECT_STORAGE_ENDPOINT,
+  provider: environment.OBJECT_STORAGE_PROVIDER,
+  region: environment.OBJECT_STORAGE_REGION,
+  ...(environment.OBJECT_STORAGE_PUBLIC_ENDPOINT === undefined
+    ? {}
+    : { publicEndpoint: environment.OBJECT_STORAGE_PUBLIC_ENDPOINT }),
+});
+const observedStorage = observeObjectStoreActivity(objectStore);
 const storage = observedStorage.storage;
 const telemetry = createTelemetry();
 const app = buildWorkerApp({
@@ -164,8 +164,38 @@ const timer = setInterval(() => void runJobs(), 2_000);
 timer.unref();
 void runJobs();
 
+const coverShutdown = new AbortController();
+let coverRun: Promise<void> | undefined;
+let coverTimer: ReturnType<typeof setInterval> | undefined;
+if (environment.SQUARE_COVER_SOCKET) {
+  const covers = createSquareCoverJobs({
+    repository: repositories.squareCovers,
+    storage: objectStore,
+    socket: environment.SQUARE_COVER_SOCKET,
+    onResult: (event) => app.log.info(event, "square cover job finished"),
+  });
+  const runCovers = () => {
+    if (coverRun || coverShutdown.signal.aborted) return;
+    coverRun = repositories
+      .readiness()
+      .then(() => covers.tick(coverShutdown.signal))
+      .catch(() => {
+        if (!coverShutdown.signal.aborted) app.log.error("square cover job failed");
+      })
+      .finally(() => {
+        coverRun = undefined;
+      });
+  };
+  coverTimer = setInterval(runCovers, 2_000);
+  coverTimer.unref();
+  runCovers();
+}
+
 app.addHook("onClose", async () => {
   clearInterval(timer);
+  clearInterval(coverTimer);
+  coverShutdown.abort();
+  await coverRun;
   await repositories.close();
 });
 

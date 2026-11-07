@@ -42,6 +42,8 @@ export interface SquareDraft {
   users: DirectoryUser[];
 }
 
+export type SquareCover = { status: "pending" | "failed" } | { status: "ready"; path: string };
+
 export interface SquareProject {
   projectId: string;
   displayName: string;
@@ -49,6 +51,7 @@ export interface SquareProject {
   updatedAt: string;
   fileCount: number;
   totalSize: number;
+  cover?: SquareCover;
   homepage?: {
     configuredPath: string | null;
     path: string | null;

@@ -123,9 +123,35 @@ export function createSquareService(options: {
       const result = await repository.listVisible({ ...visible, q, creator, page, pageSize });
       return {
         ...result,
-        projects: result.projects.map(summary),
+        projects: result.projects.map((project) => {
+          const cover = project.cover;
+          return {
+            ...summary(project),
+            ...(cover
+              ? {
+                  cover:
+                    cover.status === "ready"
+                      ? {
+                          status: "ready" as const,
+                          path: `/api/square/projects/${project.projectKey}/cover/${cover.targetHash}`,
+                        }
+                      : { status: cover.status },
+                }
+              : {}),
+          };
+        }),
         directoryUnavailable: visible.directoryUnavailable,
       };
+    },
+    async getCover(input: SquareViewer & { projectKey: string; targetHash: string }) {
+      const project = await repository.findVisible({
+        ...(await visibility(input)),
+        projectKey: input.projectKey,
+      });
+      const cover = project?.cover;
+      if (cover?.status !== "ready" || cover.targetHash !== input.targetHash)
+        throw new SquareError("SQUARE_NOT_FOUND", 404);
+      return cover.privateImageKey;
     },
     async getProject(input: SquareViewer & { projectKey: string }) {
       const project = await repository.findVisible({
