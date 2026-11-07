@@ -1,0 +1,21 @@
+model ProjectSquareCover {
+  projectId       String      @id @map("project_id") @db.Char(36)
+  tenantId        String      @map("tenant_id") @db.Char(36)
+  revisionId      String      @map("revision_id") @db.Char(36)
+  homepagePath    String      @map("homepage_path") @db.LongText
+  targetHash      String      @map("target_hash") @db.Char(64)
+  status          String      @default("pending") @db.VarChar(16)
+  attempts        Int         @default(0)
+  nextAttemptAt   DateTime    @default(now()) @map("next_attempt_at") @db.DateTime(3)
+  leaseId         String?     @map("lease_id") @db.Char(36)
+  leasedUntil     DateTime?   @map("leased_until") @db.DateTime(3)
+  privateImageKey String?     @map("private_image_key") @db.VarChar(191)
+  width           Int?
+  height          Int?
+  generatedAt     DateTime?   @map("generated_at") @db.DateTime(3)
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.DateTime(3)
+  project         DemoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@map("project_square_covers")
+}

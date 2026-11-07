@@ -37,8 +37,11 @@ export function createAliyunOssObjectStore(config: ObjectStoreConfig): ObjectSto
         ]),
       };
     },
-    async getObject(key) {
-      const result = await client.getStream(key);
+    async getObject(key, options) {
+      const result = await (client as unknown as OssGetStreamClient).getStream(
+        key,
+        options?.timeoutMs === undefined ? undefined : { timeout: options.timeoutMs },
+      );
       return result.stream as Readable;
     },
     async headObject(key, options) {
@@ -107,6 +110,10 @@ function md5FromEtag(value: string | undefined) {
 type OssBucketAclClient = OSS & {
   putBucketACL(name: string, acl: "private"): Promise<unknown>;
 };
+
+interface OssGetStreamClient {
+  getStream(name: string, options?: { timeout?: number }): ReturnType<OSS["getStream"]>;
+}
 
 interface OssHeadClient {
   head(name: string, options?: { timeout?: number }): ReturnType<OSS["head"]>;

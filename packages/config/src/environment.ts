@@ -164,6 +164,11 @@ function isIpv4Loopback(hostname: string) {
 const workerSchema = z
   .object({
     ...infrastructureEnvironment,
+    SQUARE_COVER_SOCKET: z
+      .string()
+      .regex(/^\/[^\0]+$/)
+      .max(100)
+      .optional(),
     UPLOAD_FINALIZATION_CONCURRENCY: workerConcurrency.default(10),
     UPLOAD_HEAD_OBJECT_TIMEOUT_MS: storageOperationTimeout.default(10_000),
     WORKER_HOST: bindHost,

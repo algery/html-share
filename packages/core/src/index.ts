@@ -96,3 +96,5 @@ export * from "./square/contracts.js";
 export * from "./square/service.js";
 export * from "./organization/contracts.js";
 export * from "./organization/directory-service.js";
+
+export { contentTypeForPath } from "./project/content-mime.js";

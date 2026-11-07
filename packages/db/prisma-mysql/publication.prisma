@@ -59,6 +59,7 @@ model DemoProject {
   owner                User                  @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
   currentRevision      Revision?             @relation("CurrentRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
   squareSettings       ProjectSquareSettings?
+  squareCover          ProjectSquareCover?
   squareAudience       ProjectSquareAudience[]
   revisions            Revision[]            @relation("ProjectRevisions")
   uploadTasks          UploadTask[]

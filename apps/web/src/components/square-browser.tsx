@@ -118,7 +118,7 @@ export function SquareBrowser({ apiUrl }: { apiUrl: string }) {
               </p>
             ) : null}
             {data.projects.length > 0 ? (
-              <SquareProjectList projects={data.projects} />
+              <SquareProjectList apiUrl={apiUrl} projects={data.projects} />
             ) : (
               <div className="rounded-lg bg-slate-100 p-6 text-sm text-slate-600">
                 <p>

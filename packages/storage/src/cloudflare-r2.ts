@@ -33,7 +33,7 @@ export function createCloudflareR2ObjectStore(config: ObjectStoreConfig): Object
       return {
         headers,
         url: await getSignedUrl(
-          signingClient,
+          input.internal ? client : signingClient,
           new PutObjectCommand({
             Bucket: config.bucket,
             ContentLength: input.contentLength,
@@ -48,8 +48,11 @@ export function createCloudflareR2ObjectStore(config: ObjectStoreConfig): Object
         ),
       };
     },
-    async getObject(key) {
-      const result = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }));
+    async getObject(key, options) {
+      const result = await client.send(
+        new GetObjectCommand({ Bucket: config.bucket, Key: key }),
+        options?.abortSignal === undefined ? undefined : { abortSignal: options.abortSignal },
+      );
       if (!isReadable(result.Body)) throw new Error("OBJECT_BODY_UNAVAILABLE");
       return result.Body;
     },

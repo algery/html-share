@@ -8,8 +8,9 @@ export interface ObjectStore {
     contentType: string;
     contentMd5: string;
     expiresInSeconds: number;
+    internal?: boolean;
   }): Promise<{ url: string; headers: Record<string, string> }>;
-  getObject(key: string): Promise<Readable>;
+  getObject(key: string, options?: HeadObjectOptions): Promise<Readable>;
   headObject(
     key: string,
     options?: HeadObjectOptions,

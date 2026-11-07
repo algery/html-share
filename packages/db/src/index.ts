@@ -34,3 +34,5 @@ export {
 
 export { createSquareRepository } from "./square-repository.js";
 export { createMysqlSquareRepository } from "./mysql/square-repository.js";
+
+export { SQUARE_COVER_PREFIX } from "./square-cover-repository.js";

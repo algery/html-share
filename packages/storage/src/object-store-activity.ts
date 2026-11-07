@@ -20,9 +20,9 @@ export function observeObjectStoreActivity(delegate: ObjectStore) {
     ensurePrivateBucket: () => delegate.ensurePrivateBucket(),
     headObject: (key, options) => delegate.headObject(key, options),
     listObjects: (input) => delegate.listObjects(input),
-    async getObject(key) {
+    async getObject(key, options) {
       activity.getObjectCalls += 1;
-      const source = await delegate.getObject(key);
+      const source = await delegate.getObject(key, options);
       const meter = new Transform({
         transform(chunk: Buffer | string, encoding, callback) {
           activity.bodyBytesRead +=
