@@ -1,12 +1,13 @@
-# demo share 品牌资产
+# Demo Share 品牌资产
 
 2026-11-07 使用内置 `image_gen` 生图工具生成；原稿为 `demo-share-logo-source.png`，保留透明通道。以下发布尺寸仅做等比缩小，未改变图形或色彩：
 
 - `apps/web/public/brand/demo-share-logo.png`：128×128，导航和登录页以28px显示。
 - `apps/web/public/brand/demo-share-icon.png`：32×32，浏览器标签图标。
 - `apps/web/public/brand/demo-share-apple-icon.png`：180×180，设备书签图标。
+- `apps/web/public/brand/demo-share-wordmark.png`：480×160，导航和登录页以 120×40px 显示。由 [选定的透明艺术字](demo-share-wordmark-title-case.png) 等比缩小，[生成提示词](demo-share-wordmark-title-case.prompt.txt) 随原稿保存。
 
-产品名称为小写 `demo share`；文字与图像分离，带同名文本的Logo为空alt。技术连接/安装标识沿用 `html-share`，兼容既有客户端。
+网站名称使用 `Demo Share`。艺术字的替代文本为 `Demo Share`，相邻方形图标的替代文本为空。技术连接与安装标识沿用 `html-share`。
 
 原稿为生图工具的实际输出，颜色有轻微生成差异；提示词中的 `#263F72` 是视觉参考，应用控件主色仍保留该值。
 

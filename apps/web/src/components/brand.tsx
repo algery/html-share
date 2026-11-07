@@ -2,7 +2,7 @@ import Image from "next/image";
 
 export function Brand() {
   return (
-    <span className="inline-flex shrink-0 items-center gap-2.5 whitespace-nowrap text-base font-semibold tracking-tight">
+    <span className="inline-flex shrink-0 items-center gap-2.5">
       <Image
         alt=""
         className="brand-mark"
@@ -11,7 +11,13 @@ export function Brand() {
         unoptimized
         width={28}
       />
-      demo share
+      <Image
+        alt="Demo Share"
+        height={40}
+        src="/brand/demo-share-wordmark.png"
+        unoptimized
+        width={120}
+      />
     </span>
   );
 }

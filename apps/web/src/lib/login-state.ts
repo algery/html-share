@@ -29,7 +29,7 @@ const LOGIN_STATES: Record<string, LoginState> = {
 
 const DEFAULT_STATE: LoginState = {
   description: "在钉钉中会优先使用免登；外部浏览器会跳转到钉钉授权。",
-  title: "使用钉钉登录 demo share",
+  title: "使用钉钉登录 Demo Share",
   tone: "default",
 };
 
