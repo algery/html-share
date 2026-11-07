@@ -3,11 +3,10 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { ProjectHomepageManager } from "./project-homepage-manager";
-import { ProjectSquareManager } from "./project-square-manager";
+import { DemoDetailSettings } from "./demo-detail-settings";
 import { CopyCodeButton } from "./copy-code-button";
 import { formatBytes, formatDate, type DemoSummary } from "./demo-list";
-import { PasswordAccessManager, type ProjectAccessState } from "./password-access-manager";
+import type { ProjectAccessState } from "./password-access-manager";
 
 interface DemoDetailResponse {
   csrfToken: string | null;
@@ -90,14 +89,21 @@ export function DemoDetail({ apiUrl, projectId }: { apiUrl: string; projectId: s
             </h1>
             <p className="page-description">查看已发布文件，复制链接即可分享。</p>
           </div>
-          <button
-            className={buttonClass}
-            disabled={state.status === "loading"}
-            onClick={reload}
-            type="button"
-          >
-            重新加载
-          </button>
+          <div className="flex flex-wrap gap-2">
+            {state.status === "ready" ? (
+              <a className={buttonClass} href="#project-settings">
+                项目设置
+              </a>
+            ) : null}
+            <button
+              className={buttonClass}
+              disabled={state.status === "loading"}
+              onClick={reload}
+              type="button"
+            >
+              重新加载
+            </button>
+          </div>
         </div>
         {state.status === "loading" ? (
           <div aria-label="正在加载项目文件" className="mt-8 space-y-3" role="status">
@@ -143,29 +149,18 @@ export function DemoDetail({ apiUrl, projectId }: { apiUrl: string; projectId: s
           </div>
         ) : null}
         {state.status === "ready" ? (
-          <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <section className="min-w-0">
-              <ProjectFiles data={state.data} />
-            </section>
-            <aside className="min-w-0 space-y-5">
-              <ProjectHomepageManager
-                apiUrl={apiUrl}
-                projectId={projectId}
-                csrfToken={state.data.csrfToken}
-                homepage={state.data.project.homepage}
-                files={state.data.files}
-                onSaved={reloadHomepage}
-              />
-              <PasswordAccessManager
-                access={state.data.project}
-                apiUrl={apiUrl}
-                csrfToken={state.data.csrfToken}
-                onChanged={updateAccess}
-                projectId={projectId}
-              />
-              <ProjectSquareManager key={projectId} apiUrl={apiUrl} projectId={projectId} />
-            </aside>
-          </div>
+          <>
+            <ProjectFiles data={state.data} />
+            <DemoDetailSettings
+              apiUrl={apiUrl}
+              csrfToken={state.data.csrfToken}
+              files={state.data.files}
+              onAccessChanged={updateAccess}
+              onHomepageSaved={reloadHomepage}
+              project={state.data.project}
+              projectId={projectId}
+            />
+          </>
         ) : null}
       </section>
     </main>

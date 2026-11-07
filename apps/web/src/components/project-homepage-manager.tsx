@@ -61,7 +61,12 @@ export function ProjectHomepageManager({
     }
   }
   return (
-    <section className="surface" id="project-homepage" aria-labelledby="homepage-title">
+    <section
+      aria-labelledby="homepage-title"
+      className="surface scroll-mt-5"
+      id="project-homepage"
+      tabIndex={-1}
+    >
       <h2 className="section-title" id="homepage-title">
         项目首页
       </h2>
