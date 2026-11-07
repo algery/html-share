@@ -1,7 +1,8 @@
 import type { MysqlClient } from "./types.js";
 import { mysqlTransaction } from "./transaction.js";
 import { claimableUploadId } from "./upload-claim.js";
-import { publishedAccessResult, type PasswordCrypto } from "./password-upload-policy.js";
+import { publishedAccessResult } from "./password-upload-policy.js";
+import type { UploadRepositoryOptions } from "../upload-repository.js";
 import { type UploadRepository, type UploadTaskSummary, UploadError } from "@html-share/core";
 
 import { UploadAction, UploadTaskStatus } from "../generated/prisma-mysql/client.js";
@@ -45,10 +46,7 @@ export interface ProcessingUpload {
 
 export function createMysqlUploadRepository(
   prisma: MysqlClient,
-  options: {
-    passwordCrypto?: PasswordCrypto;
-    passwordManagementCrypto?: PasswordCrypto;
-  } = {},
+  options: UploadRepositoryOptions = {},
 ): UploadRepository & {
   claimNextProcessingUpload(now: Date): Promise<ProcessingUpload | null>;
   publishUpload(input: { uploadId: string; now: Date }): Promise<boolean>;
@@ -56,8 +54,7 @@ export function createMysqlUploadRepository(
   failUpload(input: { uploadId: string; failureCode: string; now: Date }): Promise<boolean>;
 } {
   return {
-    prepare: (input) =>
-      prepareUpload(prisma, input, options.passwordCrypto, options.passwordManagementCrypto),
+    prepare: (input) => prepareUpload(prisma, input, options),
 
     async requestCompletion(input) {
       // Release unrelated expiry locks before taking the project lock for password results.

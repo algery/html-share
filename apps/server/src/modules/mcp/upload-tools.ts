@@ -264,7 +264,7 @@ function isUploadError(error: unknown): error is UploadError {
 function messageFor(code: string) {
   const messages: Record<string, string> = {
     project_forbidden: "只能覆盖本人创建的项目。",
-    project_quota_exceeded: "已达到 100 个 Demo 上限；覆盖现有 Demo 不受此限制。",
+    project_quota_exceeded: "已达到账号的 Demo 数量上限。可删除或覆盖已有 Demo。",
     project_upload_conflict: "该项目已有上传任务，请等待其完成或过期。",
     storage_quota_exceeded: "已达到 2 GB 存储配额；覆盖现有 Demo 不受此限制。",
     upload_rate_limited: "上传操作过于频繁，请稍后重试。",

@@ -15,12 +15,13 @@ import {
 export function publishUpload(prisma: PrismaClient, input: { uploadId: string; now: Date }) {
   return prisma.$transaction(async (tx) => {
     const taskPointer = await tx.uploadTask.findUnique({
-      select: { projectId: true },
+      select: { ownerUserId: true, projectId: true },
       where: { id: input.uploadId },
     });
     if (taskPointer === null) return false;
-    // Project deletion uses the same project -> task lock order. Reading the
-    // task pointer first is safe because projectId is immutable.
+    // Hold the same account lock as prepare while moving a reserved slot to
+    // an active project. Keep the project -> task lock order used by deletion.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${taskPointer.ownerUserId}))`;
     const lockedProject = await tx.$queryRaw<LockedProject[]>`
       SELECT "status", "current_revision_id" AS "currentRevisionId"
       FROM "demo_projects"

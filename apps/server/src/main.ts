@@ -1,6 +1,7 @@
 import { EnvironmentValidationError, readDingTalkEnv, readServerEnv } from "@html-share/config";
 import {
   createSquareService,
+  MAX_DEMOS_PER_USER,
   createAuthSessionService,
   createMcpTokenService,
   createProjectDeletionService,
@@ -37,6 +38,7 @@ if (process.env["DATABASE_DEPLOYMENT_TARGET_FILE"] !== undefined) {
   });
 }
 const environment = loadEnvironment();
+const maxDemosPerUser = environment.server.MAX_DEMOS_PER_USER ?? MAX_DEMOS_PER_USER;
 const passwordCrypto = createPasswordCrypto(environment.server.PASSWORD_RESULT_ENCRYPTION_KEY);
 const passwordManagementCrypto = createPasswordCrypto(
   environment.server.PASSWORD_MANAGEMENT_ENCRYPTION_KEY,
@@ -46,6 +48,7 @@ const repositories = await openDatabaseRepositories(
   {
     passwordCrypto,
     passwordManagementCrypto,
+    maxDemosPerUser,
   },
   environment.server.DATABASE_DEPLOYMENT_TARGET_FILE === undefined
     ? undefined
@@ -132,6 +135,7 @@ const app = buildServerApp({
   }),
   projects,
   projectManagement: projects,
+  maxDemosPerUser,
   projectDeletion,
   rateLimits: {
     authPerMinute: environment.server.AUTH_RATE_LIMIT_PER_MINUTE,

@@ -19,6 +19,38 @@ describe("environment validation", () => {
     OBJECT_STORAGE_REGION: "local",
   } as const;
 
+  const serverEnvironment = {
+    APP_AUTH_URL: "http://app.localhost:3001",
+    APP_HOST: "app.localhost",
+    APP_WEB_URL: "http://app.localhost:3000",
+    AUTH_STATE_SECRET: "test-state-signing-secret-with-enough-length",
+    MCP_TOKEN_HASH_SECRET: "test-mcp-token-hash-secret-with-enough-length",
+    PASSWORD_MANAGEMENT_ENCRYPTION_KEY: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
+    PASSWORD_RESULT_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+    DEMO_AUTH_URL: "http://demo.localhost:3001",
+    DEMO_HOST: "demo.localhost",
+    DEMO_WEB_URL: "http://demo.localhost:3001",
+    ...infrastructureEnvironment,
+    SERVER_HOST: "0.0.0.0",
+    SERVER_PORT: "3001",
+  };
+
+  it("reads an optional per-account Demo limit", () => {
+    expect(readServerEnv(serverEnvironment).MAX_DEMOS_PER_USER).toBeUndefined();
+    expect(
+      readServerEnv({ ...serverEnvironment, MAX_DEMOS_PER_USER: "37" }).MAX_DEMOS_PER_USER,
+    ).toBe(37);
+  });
+
+  it.each(["", "0", "-1", "1.5", "1e2", "9007199254740992", "invalid"])(
+    "rejects invalid Demo limit %j",
+    (MAX_DEMOS_PER_USER) => {
+      expect(() => readServerEnv({ ...serverEnvironment, MAX_DEMOS_PER_USER })).toThrow(
+        "MAX_DEMOS_PER_USER",
+      );
+    },
+  );
+
   it("parses the Phase 1 service environments", () => {
     expect(
       readWebEnv({
@@ -32,21 +64,7 @@ describe("environment validation", () => {
       NEXT_PUBLIC_DEMO_URL: "http://demo.localhost:3001",
     });
 
-    const server = readServerEnv({
-      APP_AUTH_URL: "http://app.localhost:3001",
-      APP_HOST: "app.localhost",
-      APP_WEB_URL: "http://app.localhost:3000",
-      AUTH_STATE_SECRET: "test-state-signing-secret-with-enough-length",
-      MCP_TOKEN_HASH_SECRET: "test-mcp-token-hash-secret-with-enough-length",
-      PASSWORD_MANAGEMENT_ENCRYPTION_KEY: "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=",
-      PASSWORD_RESULT_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
-      DEMO_AUTH_URL: "http://demo.localhost:3001",
-      DEMO_HOST: "demo.localhost",
-      DEMO_WEB_URL: "http://demo.localhost:3001",
-      ...infrastructureEnvironment,
-      SERVER_HOST: "0.0.0.0",
-      SERVER_PORT: "3001",
-    });
+    const server = readServerEnv(serverEnvironment);
     expect(server.SERVER_PORT).toBe(3001);
     expect(server).toMatchObject({
       AUTH_RATE_LIMIT_PER_MINUTE: 30,

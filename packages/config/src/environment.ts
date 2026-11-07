@@ -70,6 +70,13 @@ const serverSchema = z
     AUTH_RATE_LIMIT_PER_MINUTE: rateLimit.default(30),
     CONTENT_IP_RATE_LIMIT_PER_MINUTE: rateLimit.default(1200),
     CONTENT_SESSION_RATE_LIMIT_PER_MINUTE: rateLimit.default(600),
+    MAX_DEMOS_PER_USER: z
+      .string()
+      .trim()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .pipe(z.number().int().positive())
+      .optional(),
     MCP_TOKEN_HASH_SECRET: z.string().min(32),
     PASSWORD_MANAGEMENT_ENCRYPTION_KEY: z.string().regex(/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/),
     PASSWORD_RESULT_ENCRYPTION_KEY: z.string().regex(/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/),

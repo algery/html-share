@@ -60,6 +60,7 @@ export interface ServerAppOptions {
   readiness?: () => Promise<void>;
   mcpTokens: McpTokenService;
   projectManagement?: ProjectManagementReader;
+  maxDemosPerUser?: number;
   projects?: ProjectReader;
   rateLimits?: {
     authPerMinute: number;
@@ -166,6 +167,7 @@ export function buildServerApp(options: ServerAppOptions): FastifyInstance {
     appWebUrl: options.appWebUrl,
     demoWebUrl: options.demoWebUrl,
     ...(options.projectManagement === undefined ? {} : { projects: options.projectManagement }),
+    ...(options.maxDemosPerUser === undefined ? {} : { maxDemosPerUser: options.maxDemosPerUser }),
     ...(options.passwordManagement === undefined
       ? {}
       : { passwordManagement: options.passwordManagement }),

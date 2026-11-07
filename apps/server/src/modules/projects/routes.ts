@@ -18,6 +18,7 @@ export interface ProjectRouteOptions {
   appWebUrl: string;
   demoWebUrl: string;
   projects?: ProjectManagementReader;
+  maxDemosPerUser?: number;
   passwordManagement?: PasswordManagementService;
   sessions: AuthSessionService;
 }
@@ -140,7 +141,7 @@ export function registerProjectRoutes(app: FastifyInstance, options: ProjectRout
       })),
       quota: {
         projectCount: result.quota.projectCount,
-        projectLimit: MAX_DEMOS_PER_USER,
+        projectLimit: options.maxDemosPerUser ?? MAX_DEMOS_PER_USER,
         storageBytes: result.quota.storageBytes,
         storageLimitBytes: MAX_STORAGE_BYTES_PER_USER,
       },

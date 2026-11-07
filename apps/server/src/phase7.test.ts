@@ -19,55 +19,58 @@ describe("Phase 7 management APIs", () => {
     await Promise.all(applications.splice(0).map((app) => app.close()));
   });
 
-  it("returns only the current owner's active projects and matching quota", async () => {
-    const projects: ProjectManagementReader = {
-      findOwnedActiveProject: vi.fn().mockResolvedValue(null),
-      listOwnedActiveProjects: vi.fn().mockResolvedValue({
+  it.each([undefined, 37])(
+    "returns the owner's projects and the effective quota (%s)",
+    async (limit) => {
+      const projects: ProjectManagementReader = {
+        findOwnedActiveProject: vi.fn().mockResolvedValue(null),
+        listOwnedActiveProjects: vi.fn().mockResolvedValue({
+          projects: [
+            {
+              createdAt: new Date("2026-09-02T00:00:00.000Z"),
+              displayName: "Latest Demo",
+              fileCount: 2,
+              projectKey: "newer",
+              totalSize: 128,
+              updatedAt: new Date("2026-09-03T00:00:00.000Z"),
+            },
+          ],
+          quota: { projectCount: 1, storageBytes: 128 },
+        }),
+      };
+      const app = createApp(projects, limit);
+      applications.push(app);
+      const cookie = await createAppSession(app);
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/projects",
+        headers: {
+          cookie,
+          host: "app.localhost",
+          origin: "http://app.localhost:3000",
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
         projects: [
           {
-            createdAt: new Date("2026-09-02T00:00:00.000Z"),
             displayName: "Latest Demo",
-            fileCount: 2,
-            projectKey: "newer",
-            totalSize: 128,
-            updatedAt: new Date("2026-09-03T00:00:00.000Z"),
+            projectId: "newer",
+            projectPrefix: "http://demo.localhost:3001/newer/",
           },
         ],
-        quota: { projectCount: 1, storageBytes: 128 },
-      }),
-    };
-    const app = createApp(projects);
-    applications.push(app);
-    const cookie = await createAppSession(app);
-
-    const response = await app.inject({
-      method: "GET",
-      url: "/api/projects",
-      headers: {
-        cookie,
-        host: "app.localhost",
-        origin: "http://app.localhost:3000",
-      },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
-      projects: [
-        {
-          displayName: "Latest Demo",
-          projectId: "newer",
-          projectPrefix: "http://demo.localhost:3001/newer/",
+        quota: {
+          projectCount: 1,
+          projectLimit: limit ?? 100,
+          storageBytes: 128,
+          storageLimitBytes: 2 * 1024 * 1024 * 1024,
         },
-      ],
-      quota: {
-        projectCount: 1,
-        projectLimit: 100,
-        storageBytes: 128,
-        storageLimitBytes: 2 * 1024 * 1024 * 1024,
-      },
-    });
-    expect(projects.listOwnedActiveProjects).toHaveBeenCalledWith({ ownerUserId: "user-1" });
-  });
+      });
+      expect(projects.listOwnedActiveProjects).toHaveBeenCalledWith({ ownerUserId: "user-1" });
+    },
+  );
 
   it("enforces the app session, trusted origin, and app host for management APIs", async () => {
     const app = createApp();
@@ -149,7 +152,7 @@ describe("Phase 7 management APIs", () => {
   });
 });
 
-function createApp(projectManagement?: ProjectManagementReader) {
+function createApp(projectManagement?: ProjectManagementReader, maxDemosPerUser?: number) {
   return buildServerApp({
     appAuthUrl: "http://app.localhost:3001",
     appHost: "app.localhost",
@@ -169,6 +172,7 @@ function createApp(projectManagement?: ProjectManagementReader) {
       repository: new InMemoryMcpTokenRepository(),
     }),
     ...(projectManagement === undefined ? {} : { projectManagement }),
+    ...(maxDemosPerUser === undefined ? {} : { maxDemosPerUser }),
   });
 }
 

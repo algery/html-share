@@ -22,6 +22,8 @@ pnpm stack:up --env-file=.env.mysql.example
 
 ## 配置与部署
 
+- `MAX_DEMOS_PER_USER` 控制每个账号的 Demo 数量上限，默认 `100`。例如在启动时选用的 `.env` 文件里设置 `MAX_DEMOS_PER_USER=150`，运行 `pnpm stack:up --env-file=.env` 应用配置；Compose 环境下需重新创建 API 容器才能读取新的环境变量。MySQL 和 PostgreSQL 使用相同规则，页面显示实际生效值。调低上限后，已有项目和已受理上传继续可用，达到新上限的账号需释放名额才能新建。
+
 - `DATABASE_PROVIDER=postgresql|mysql`；省略使用 PostgreSQL，显式空值非法。
 - `DATABASE_URL` 必须与 provider 协议匹配，仅注入服务端环境。
 - 修改配置后重启全部数据库进程；空目标库不会继承旧项目。
