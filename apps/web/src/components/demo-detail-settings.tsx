@@ -11,6 +11,7 @@ interface DemoDetailSettingsProps {
   files: ComponentProps<typeof ProjectHomepageManager>["files"];
   onAccessChanged: (access: ProjectAccessState) => void;
   onHomepageSaved: () => Promise<void>;
+  onHomepageSavingChange: (saving: boolean) => void;
   project: ProjectAccessState & Pick<DemoSummary, "homepage">;
   projectId: string;
 }
@@ -21,12 +22,20 @@ export function DemoDetailSettings({
   files,
   onAccessChanged,
   onHomepageSaved,
+  onHomepageSavingChange,
   project,
   projectId,
 }: DemoDetailSettingsProps) {
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash !== "#project-homepage" && hash !== "#project-square" && hash !== "#project-settings")
+    if (
+      ![
+        "#project-homepage",
+        "#project-homepage-file",
+        "#project-square",
+        "#project-settings",
+      ].includes(hash)
+    )
       return;
 
     let frame = 0;
@@ -50,14 +59,14 @@ export function DemoDetailSettings({
   return (
     <section
       aria-labelledby="project-settings-title"
-      className="mt-6 min-w-0 scroll-mt-5"
+      className="mb-8 min-w-0 scroll-mt-5"
       id="project-settings"
       tabIndex={-1}
     >
       <h2 className="section-title mb-3" id="project-settings-title">
         项目设置
       </h2>
-      <div className="grid min-w-0 items-start gap-4 md:grid-cols-2 md:[&>#project-square]:col-span-2 lg:grid-cols-3 lg:[&>#project-square]:col-span-1">
+      <div className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
         <ProjectHomepageManager
           apiUrl={apiUrl}
           projectId={projectId}
@@ -65,6 +74,7 @@ export function DemoDetailSettings({
           homepage={project.homepage}
           files={files}
           onSaved={onHomepageSaved}
+          onSavingChange={onHomepageSavingChange}
         />
         <PasswordAccessManager
           access={project}
