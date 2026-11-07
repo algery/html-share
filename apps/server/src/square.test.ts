@@ -160,11 +160,22 @@ describe("square HTTP authorization and settings", () => {
       "?pageSize=100",
       "?page=wat",
       "?q=x&q=y",
+      "?creator=" + "x".repeat(81),
+      "?creator=x&creator=y",
     ]) {
       expect((await app.inject({ url: `/api/square/projects${query}`, headers })).statusCode).toBe(
         400,
       );
     }
     expect(repository.listVisible).not.toHaveBeenCalled();
+  });
+  it("forwards both trimmed search fields to the authorized list query", async () => {
+    const { app, headers, repository } = await setup();
+    const params = new URLSearchParams({ q: "  产品 ", creator: " 张三 " });
+    const response = await app.inject({ url: `/api/square/projects?${params}`, headers });
+    expect(response.statusCode).toBe(200);
+    expect(repository.listVisible).toHaveBeenCalledWith(
+      expect.objectContaining({ q: "产品", creator: "张三", page: 1, pageSize: 10 }),
+    );
   });
 });

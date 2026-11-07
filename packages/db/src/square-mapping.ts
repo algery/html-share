@@ -52,6 +52,14 @@ export function squareVisibleWhere(input: SquareVisibility) {
   };
 }
 
+export function squareSearchWhere({ q, creator }: { q: string; creator?: string }) {
+  const contains = (value: string) => ({ contains: value.replace(/[\\%_]/g, "\\$&") });
+  return {
+    ...(q ? { displayName: contains(q) } : {}),
+    ...(creator ? { owner: { is: { displayName: contains(creator) } } } : {}),
+  };
+}
+
 export function squareProject(row: {
   projectKey: string;
   displayName: string;

@@ -97,15 +97,22 @@ export function createSquareService(options: {
         throw error;
       }
     },
-    async listProjects(input: SquareViewer & { q?: string; page?: number; pageSize?: number }) {
-      if (input.q !== undefined && typeof input.q !== "string") {
+    async listProjects(
+      input: SquareViewer & { q?: string; creator?: string; page?: number; pageSize?: number },
+    ) {
+      if (
+        (input.q !== undefined && typeof input.q !== "string") ||
+        (input.creator !== undefined && typeof input.creator !== "string")
+      ) {
         throw new SquareError("SQUARE_INVALID_QUERY", 400);
       }
       const q = (input.q ?? "").trim();
+      const creator = (input.creator ?? "").trim();
       const page = input.page ?? 1;
       const pageSize = input.pageSize ?? 10;
       if (
         q.length > 80 ||
+        creator.length > 80 ||
         !Number.isSafeInteger(page) ||
         page < 1 ||
         ![10, 20, 50].includes(pageSize)
@@ -113,7 +120,7 @@ export function createSquareService(options: {
         throw new SquareError("SQUARE_INVALID_QUERY", 400);
       }
       const visible = await visibility(input);
-      const result = await repository.listVisible({ ...visible, q, page, pageSize });
+      const result = await repository.listVisible({ ...visible, q, creator, page, pageSize });
       return {
         ...result,
         projects: result.projects.map(summary),

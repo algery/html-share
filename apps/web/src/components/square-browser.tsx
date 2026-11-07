@@ -8,18 +8,22 @@ import { SquareLoadState } from "./square-load-state";
 
 export function SquareBrowser({ apiUrl }: { apiUrl: string }) {
   const [query, setQuery] = useState("");
+  const [creatorQuery, setCreatorQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [attempt, setAttempt] = useState(0);
   const [data, setData] = useState<SquareListResponse | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "expired">("loading");
   const keyword = query.trim();
+  const creator = creatorQuery.trim();
+  const filtered = Boolean(keyword || creator);
   useEffect(() => {
     const controller = new AbortController();
     setData(null);
     setStatus("loading");
     const params = new URLSearchParams({
       q: keyword,
+      creator,
       page: String(page),
       pageSize: String(pageSize),
     });
@@ -44,7 +48,7 @@ export function SquareBrowser({ apiUrl }: { apiUrl: string }) {
         if (!controller.signal.aborted) setStatus("error");
       });
     return () => controller.abort();
-  }, [apiUrl, keyword, page, pageSize, attempt]);
+  }, [apiUrl, keyword, creator, page, pageSize, attempt]);
   function reload() {
     setData(null);
     setStatus("loading");
@@ -68,31 +72,38 @@ export function SquareBrowser({ apiUrl }: { apiUrl: string }) {
       </div>
       <section aria-label="可见项目" className="min-w-0">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <label className="relative w-full sm:w-80">
-            <span className="sr-only">搜索项目名</span>
-            <ManagementIcon
-              name="search"
-              className="pointer-events-none absolute left-3 top-3 text-slate-400"
-            />
-            <input
-              autoComplete="off"
-              className="field pl-10"
-              maxLength={80}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setPage(1);
-              }}
-              placeholder="搜索项目名"
-              type="search"
-              value={query}
-            />
-          </label>
+          <div className="grid w-full gap-3 sm:max-w-xl sm:grid-cols-2">
+            {[
+              { label: "搜索项目名", value: query, change: setQuery },
+              { label: "搜索创建者", value: creatorQuery, change: setCreatorQuery },
+            ].map(({ label, value, change }) => (
+              <label className="relative min-w-0" key={label}>
+                <span className="sr-only">{label}</span>
+                <ManagementIcon
+                  name="search"
+                  className="pointer-events-none absolute left-3 top-3 text-slate-400"
+                />
+                <input
+                  autoComplete="off"
+                  className="field pl-10"
+                  maxLength={80}
+                  onChange={(event) => {
+                    change(event.target.value);
+                    setPage(1);
+                  }}
+                  placeholder={label}
+                  type="search"
+                  value={value}
+                />
+              </label>
+            ))}
+          </div>
           <p aria-live="polite" className="text-sm text-slate-500">
             {data === null
               ? status === "loading"
                 ? "正在确认可见项目"
                 : "暂未加载可见项目"
-              : `共 ${data.total} 个${keyword ? "匹配" : "可见"}项目`}
+              : `共 ${data.total} 个${filtered ? "匹配" : "可见"}项目`}
           </p>
         </div>
         {status !== "ready" ? <SquareLoadState list status={status} onRetry={reload} /> : null}
@@ -111,15 +122,16 @@ export function SquareBrowser({ apiUrl }: { apiUrl: string }) {
             ) : (
               <div className="rounded-lg bg-slate-100 p-6 text-sm text-slate-600">
                 <p>
-                  {keyword
+                  {filtered
                     ? "没有匹配的项目。"
                     : "暂无可见项目。创建者共享后，符合范围的项目会出现在这里。"}
                 </p>
-                {keyword ? (
+                {filtered ? (
                   <button
                     className="button-secondary mt-3"
                     onClick={() => {
                       setQuery("");
+                      setCreatorQuery("");
                       setPage(1);
                     }}
                     type="button"

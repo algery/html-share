@@ -267,4 +267,33 @@ databaseContract("project square access and atomic persistence", (current) => {
       total: 0,
     });
   });
+  it("matches creator names literally and intersects project names within visible results", async () => {
+    const f = current();
+    const { service } = square(f);
+    await f.db.user.update({ where: { id: f.owner.id }, data: { displayName: "张_三" } });
+    const other = await f.db.user.create({
+      data: {
+        tenantId: f.tenant.id,
+        dingtalkUserId: randomUUID(),
+        displayName: "张二三",
+        lastLoginAt: f.now,
+      },
+    });
+    const visible = await f.project({ displayName: "产品公开" });
+    const hidden = await f.project({ displayName: "产品限阅" });
+    const second = await f.project({ displayName: "产品公开", owner: other });
+    await save(f, service, visible.prepared.projectId, organization());
+    await save(f, service, hidden.prepared.projectId, selected());
+    await save(f, service, second.prepared.projectId, organization(), { ownerUserId: other.id });
+    const viewer = { tenantId: f.tenant.id, userId: randomUUID() };
+    expect(await service.listProjects({ ...viewer, creator: " 张 " })).toMatchObject({ total: 2 });
+    expect(await service.listProjects({ ...viewer, creator: "_三", q: "产品" })).toMatchObject({
+      total: 1,
+      projects: [{ projectId: visible.prepared.projectId, creatorDisplayName: "张_三" }],
+    });
+    expect(await service.listProjects({ ...viewer, creator: "_三", q: "限阅" })).toMatchObject({
+      total: 0,
+      projects: [],
+    });
+  });
 });
