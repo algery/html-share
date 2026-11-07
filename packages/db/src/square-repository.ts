@@ -1,6 +1,7 @@
 import type { SquareRepository } from "@html-share/core";
 import type { PrismaClient } from "./generated/prisma/client.js";
 import {
+  squareSearchWhere,
   squareProjectSelect,
   squareProject,
   squareSettings,
@@ -33,7 +34,7 @@ export function createSquareRepository(prisma: PrismaClient): SquareRepository {
     async listVisible(input) {
       const where = {
         ...squareVisibleWhere(input),
-        displayName: { contains: input.q.replace(/[\\%_]/g, "\\$&") },
+        ...squareSearchWhere(input),
       };
       const total = await prisma.demoProject.count({ where });
       const page = Math.min(input.page, Math.max(1, Math.ceil(total / input.pageSize)));

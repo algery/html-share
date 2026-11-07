@@ -87,6 +87,7 @@ export interface SquareRepository {
   listVisible(
     input: SquareVisibility & {
       q: string;
+      creator?: string;
       page: number;
       pageSize: number;
     },
