@@ -15,6 +15,15 @@ afterEach(async () => {
 });
 
 describe("secret hygiene", () => {
+  it("allows the exact isolated MinIO fixture only for its dedicated variable", () => {
+    const value = "local-password-test-only";
+    expect(inspectContent(`PHASE9_MINIO_ACCESS_KEY_SECRET=${value}`)).toEqual([]);
+    expect(inspectContent(`API_KEY=${value}`)).toEqual(["non-placeholder-API_KEY"]);
+    expect(inspectContent(`PHASE9_MINIO_ACCESS_KEY_SECRET=${value}-changed`)).toEqual([
+      "non-placeholder-PHASE9_MINIO_ACCESS_KEY_SECRET",
+    ]);
+  });
+
   it("allows the two explicit database examples while rejecting other env files", () => {
     expect(inspectFileName("/fixture/.env.mysql.example")).toBe(false);
     expect(inspectFileName("/fixture/.env.example")).toBe(false);

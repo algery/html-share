@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { MAX_DEMOS_PER_USER, MAX_STORAGE_BYTES_PER_USER, UploadError } from "@html-share/core";
+import { MAX_STORAGE_BYTES_PER_USER, UploadError } from "@html-share/core";
 import {
   DemoProjectStatus,
   QuotaReservationStatus,
@@ -14,12 +14,13 @@ export async function createReservedProject(
   displayName: string,
   requestedBytes: number,
   now: Date,
+  maxDemosPerUser: number,
 ) {
   const owner = await tx.user.findUniqueOrThrow({
     where: { id: ownerUserId },
     select: { tenantId: true },
   });
-  await assertCreateQuota(tx, ownerUserId, requestedBytes, now);
+  await assertCreateQuota(tx, ownerUserId, requestedBytes, now, maxDemosPerUser);
   for (let attempt = 0; attempt < 10; attempt += 1) {
     try {
       return await tx.demoProject.create({
@@ -86,6 +87,7 @@ export async function assertCreateQuota(
   ownerUserId: string,
   requestedBytes: number,
   now: Date,
+  maxDemosPerUser: number,
 ) {
   const [activeCount, activeBytes, reservations] = await Promise.all([
     tx.demoProject.count({ where: { ownerUserId, status: DemoProjectStatus.ACTIVE } }),
@@ -102,7 +104,7 @@ export async function assertCreateQuota(
       },
     }),
   ]);
-  if (activeCount + (reservations._sum.projectDelta ?? 0) >= MAX_DEMOS_PER_USER)
+  if (activeCount + (reservations._sum.projectDelta ?? 0) >= maxDemosPerUser)
     throw new UploadError("PROJECT_QUOTA_EXCEEDED");
   const usedBytes =
     Number(activeBytes._sum.totalSize ?? 0n) + Number(reservations._sum.storageBytes ?? 0n);

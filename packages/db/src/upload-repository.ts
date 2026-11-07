@@ -41,12 +41,15 @@ export interface ProcessingUpload {
   action: "create" | "replace";
 }
 
+export interface UploadRepositoryOptions {
+  passwordCrypto?: PasswordCrypto;
+  passwordManagementCrypto?: PasswordCrypto;
+  maxDemosPerUser?: number;
+}
+
 export function createUploadRepository(
   prisma: PrismaClient,
-  options: {
-    passwordCrypto?: PasswordCrypto;
-    passwordManagementCrypto?: PasswordCrypto;
-  } = {},
+  options: UploadRepositoryOptions = {},
 ): UploadRepository & {
   claimNextProcessingUpload(now: Date): Promise<ProcessingUpload | null>;
   publishUpload(input: { uploadId: string; now: Date }): Promise<boolean>;
@@ -54,8 +57,7 @@ export function createUploadRepository(
   failUpload(input: { uploadId: string; failureCode: string; now: Date }): Promise<boolean>;
 } {
   return {
-    prepare: (input) =>
-      prepareUpload(prisma, input, options.passwordCrypto, options.passwordManagementCrypto),
+    prepare: (input) => prepareUpload(prisma, input, options),
 
     async requestCompletion(input) {
       // Release unrelated expiry locks before taking the project lock for password results.

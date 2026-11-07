@@ -30,12 +30,21 @@ export class InMemoryAuthRepository implements AuthRepository {
     const key = `${input.tenantAppKeyRef}:${input.dingtalkUserId}`;
     const existing = this.users.get(key);
     if (existing !== undefined) {
-      existing.identity = { dingtalkUserId: input.dingtalkUserId, displayName: input.displayName };
+      existing.identity = {
+        ...existing.identity,
+        dingtalkUserId: input.dingtalkUserId,
+        displayName: input.displayName,
+        ...(input.dingtalkUnionId ? { dingtalkUnionId: input.dingtalkUnionId } : {}),
+      };
       return { id: existing.id };
     }
     const user = {
       id: `user-${this.nextUserId++}`,
-      identity: { dingtalkUserId: input.dingtalkUserId, displayName: input.displayName },
+      identity: {
+        dingtalkUserId: input.dingtalkUserId,
+        displayName: input.displayName,
+        ...(input.dingtalkUnionId ? { dingtalkUnionId: input.dingtalkUnionId } : {}),
+      },
       tenantId: input.tenantAppKeyRef,
     };
     this.users.set(key, user);
@@ -90,7 +99,8 @@ export class InMemoryAuthRepository implements AuthRepository {
     ) {
       return null;
     }
-    return { ...session, user: { ...session.user } };
+    const user = [...this.users.values()].find((entry) => entry.id === session.user.id);
+    return { ...session, user: { ...session.user, ...user?.identity } };
   }
 
   async revokeAccessSession(input: { tokenDigest: string; audience: SessionAudience; now: Date }) {

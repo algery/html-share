@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { ProjectHomepageManager } from "./project-homepage-manager";
+import { ProjectSquareManager } from "./project-square-manager";
 import { CopyCodeButton } from "./copy-code-button";
 import { formatBytes, formatDate, type DemoSummary } from "./demo-list";
 import { PasswordAccessManager, type ProjectAccessState } from "./password-access-manager";
@@ -162,6 +163,7 @@ export function DemoDetail({ apiUrl, projectId }: { apiUrl: string; projectId: s
                 onChanged={updateAccess}
                 projectId={projectId}
               />
+              <ProjectSquareManager key={projectId} apiUrl={apiUrl} projectId={projectId} />
             </aside>
           </div>
         ) : null}

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
-import { ManagementIcon } from "./management-icon";
+import { Brand } from "./brand";
 
 interface ManagementShellProps {
   apiUrl: string;
@@ -75,17 +75,23 @@ export function ManagementShell({ apiUrl, children }: ManagementShellProps) {
             className="flex min-h-10 shrink-0 items-center gap-2.5 text-base font-semibold tracking-tight"
             href="/demos"
           >
-            <span className="brand-mark">
-              <ManagementIcon name="code" />
-            </span>
-            HTML Share
+            <Brand />
           </Link>
-          <nav aria-label="管理导航" className="flex min-h-10 items-center gap-1">
+          <nav
+            aria-label="管理导航"
+            className="order-last flex min-h-10 w-full items-center gap-1 sm:order-none sm:w-auto"
+          >
             <NavigationLink
               active={pathname === "/demos" || pathname.startsWith("/demos/")}
               href="/demos"
             >
               我的 Demo
+            </NavigationLink>
+            <NavigationLink
+              active={pathname === "/square" || pathname.startsWith("/square/")}
+              href="/square"
+            >
+              项目广场
             </NavigationLink>
             <NavigationLink active={pathname === "/tokens"} href="/tokens">
               我的 Token

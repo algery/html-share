@@ -31,3 +31,6 @@ export {
   writeDatabaseDeploymentTarget,
   type DatabaseDeploymentBarrier,
 } from "./database-deployment-barrier.js";
+
+export { createSquareRepository } from "./square-repository.js";
+export { createMysqlSquareRepository } from "./mysql/square-repository.js";

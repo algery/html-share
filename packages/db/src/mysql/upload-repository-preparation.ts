@@ -10,6 +10,7 @@ import { mysqlTransaction } from "./transaction.js";
 import { randomUUID } from "node:crypto";
 
 import {
+  MAX_DEMOS_PER_USER,
   UPLOAD_IDEMPOTENCY_TTL_MS,
   UPLOAD_URL_TTL_MS,
   type PreparedUpload,
@@ -24,16 +25,20 @@ import {
   assertSameUploadRequest,
   generatePasswordCandidate,
   pendingPasswordData,
-  type PasswordCrypto,
 } from "./password-upload-policy.js";
+
+import type { UploadRepositoryOptions } from "../upload-repository.js";
 
 type PrepareInput = Parameters<UploadRepository["prepare"]>[0];
 
 export async function prepareUpload(
   prisma: MysqlClient,
   input: PrepareInput,
-  crypto?: PasswordCrypto,
-  managementCrypto?: PasswordCrypto,
+  {
+    passwordCrypto: crypto,
+    passwordManagementCrypto: managementCrypto,
+    maxDemosPerUser = MAX_DEMOS_PER_USER,
+  }: UploadRepositoryOptions,
 ) {
   // Expiry must commit before this request can acquire any project lock.
   await mysqlTransaction(prisma, (tx) => expireUploadTasks(tx, input.now));
@@ -79,9 +84,10 @@ export async function prepareUpload(
                 input.displayName,
                 input.totalSize,
                 input.now,
+                maxDemosPerUser,
               );
       if (input.action === "create" && existing !== null)
-        await assertCreateQuota(tx, input.owner.id, input.totalSize, input.now);
+        await assertCreateQuota(tx, input.owner.id, input.totalSize, input.now, maxDemosPerUser);
       const revisionNumber = await tx.revision.aggregate({
         _max: { revisionNumber: true },
         where: { projectId: project.id },

@@ -2,6 +2,7 @@ export type SessionAudience = "app" | "demo";
 
 export interface DingTalkIdentity {
   dingtalkUserId: string;
+  dingtalkUnionId?: string | null;
   displayName: string;
 }
 

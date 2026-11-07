@@ -91,3 +91,8 @@ export type {
 } from "./access/contracts.js";
 
 export { resolveHomepage, homepageLink } from "./project/homepage.js";
+
+export * from "./square/contracts.js";
+export * from "./square/service.js";
+export * from "./organization/contracts.js";
+export * from "./organization/directory-service.js";

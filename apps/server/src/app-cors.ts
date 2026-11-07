@@ -36,6 +36,8 @@ export function registerManagementApiCors(app: FastifyInstance, appWebUrl: strin
     if (
       !request.url.startsWith("/api/tokens") &&
       !request.url.startsWith("/api/projects") &&
+      !request.url.startsWith("/api/square/") &&
+      !request.url.startsWith("/api/directory/") &&
       !request.url.startsWith("/api/csrf") &&
       !request.url.startsWith("/api/admin/") &&
       !request.url.startsWith("/api/skills/") &&

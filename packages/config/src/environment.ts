@@ -70,6 +70,13 @@ const serverSchema = z
     AUTH_RATE_LIMIT_PER_MINUTE: rateLimit.default(30),
     CONTENT_IP_RATE_LIMIT_PER_MINUTE: rateLimit.default(1200),
     CONTENT_SESSION_RATE_LIMIT_PER_MINUTE: rateLimit.default(600),
+    MAX_DEMOS_PER_USER: z
+      .string()
+      .trim()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .pipe(z.number().int().positive())
+      .optional(),
     MCP_TOKEN_HASH_SECRET: z.string().min(32),
     PASSWORD_MANAGEMENT_ENCRYPTION_KEY: z.string().regex(/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/),
     PASSWORD_RESULT_ENCRYPTION_KEY: z.string().regex(/^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$/),
@@ -164,8 +171,17 @@ const workerSchema = z
   })
   .superRefine((value, context) => validateObjectStorageEnvironment(context, value));
 
+const directoryEnvironment = {
+  DINGTALK_DIRECTORY_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  DINGTALK_CONTACT_API_BASE_URL: httpUrl.default("https://oapi.dingtalk.com"),
+};
+
 const dingTalkSchema = z.discriminatedUnion("DINGTALK_AUTH_MODE", [
   z.object({
+    ...directoryEnvironment,
     DINGTALK_API_BASE_URL: httpUrl.optional(),
     DINGTALK_APP_ID: optionalNonEmpty,
     DINGTALK_AUTH_MODE: z.literal("simulator"),
@@ -175,6 +191,7 @@ const dingTalkSchema = z.discriminatedUnion("DINGTALK_AUTH_MODE", [
     DINGTALK_EXTERNAL_AUTHORIZE_URL: httpUrl.optional(),
   }),
   z.object({
+    ...directoryEnvironment,
     DINGTALK_API_BASE_URL: httpUrl,
     DINGTALK_APP_ID: z.string().trim().min(1),
     DINGTALK_AUTH_MODE: z.literal("live"),

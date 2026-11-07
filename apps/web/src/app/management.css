@@ -169,14 +169,11 @@
     animation: panel-in 180ms ease-out;
   }
   .brand-mark {
-    display: inline-flex;
+    display: block;
     width: 28px;
     height: 28px;
-    align-items: center;
-    justify-content: center;
-    border-radius: 7px;
-    background: #263f72;
-    color: #fff;
+    flex-shrink: 0;
+    object-fit: contain;
   }
   .quota-meter {
     display: flex;

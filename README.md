@@ -1,6 +1,8 @@
-# HTML Share
+# demo share
 
 HTML 文件发布、受控分享和项目管理。文件正文存入私有对象存储；平台数据通过 env 选择 PostgreSQL 18 或 MySQL 8.4，Web、HTTP 和 MCP 使用同一套业务协议。
+
+产品展示名称为 `demo share`。为兼容已有客户端与部署，`@html-share/*` 包名、MCP 连接名 `html-share`、Skill 安装目录和 ZIP 名、环境变量、Cookie、数据库及部署标识保持不变。
 
 ## 本地运行
 
@@ -19,6 +21,8 @@ pnpm stack:up --env-file=.env.mysql.example
 启动器按 provider 选择完整拓扑，只启动所选数据库和 MinIO。更新时先停止 Server/Worker，再重新执行迁移与批准门禁、启动所有服务；既有数据库卷保留。`pnpm infra:down` 不删除卷。需要保留本地私有配置时，用 `--env-file=.env.local` 指向已忽略的配置文件。
 
 ## 配置与部署
+
+- `MAX_DEMOS_PER_USER` 控制每个账号的 Demo 数量上限，默认 `100`。例如在启动时选用的 `.env` 文件里设置 `MAX_DEMOS_PER_USER=150`，运行 `pnpm stack:up --env-file=.env` 应用配置；Compose 环境下需重新创建 API 容器才能读取新的环境变量。MySQL 和 PostgreSQL 使用相同规则，页面显示实际生效值。调低上限后，已有项目和已受理上传继续可用，达到新上限的账号需释放名额才能新建。
 
 - `DATABASE_PROVIDER=postgresql|mysql`；省略使用 PostgreSQL，显式空值非法。
 - `DATABASE_URL` 必须与 provider 协议匹配，仅注入服务端环境。

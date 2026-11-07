@@ -20,7 +20,7 @@ export function createAuthRepository(prisma: PrismaClient): AuthRepository {
         where: { dingtalkAppKeyRef: input.tenantAppKeyRef },
         create: {
           dingtalkAppKeyRef: input.tenantAppKeyRef,
-          name: "HTML Share organization",
+          name: "demo share organization",
         },
         update: {},
       });
@@ -34,10 +34,12 @@ export function createAuthRepository(prisma: PrismaClient): AuthRepository {
         create: {
           displayName: input.displayName,
           dingtalkUserId: input.dingtalkUserId,
+          ...(input.dingtalkUnionId ? { dingtalkUnionId: input.dingtalkUnionId } : {}),
           lastLoginAt: input.now,
           tenantId: tenant.id,
         },
         update: {
+          ...(input.dingtalkUnionId ? { dingtalkUnionId: input.dingtalkUnionId } : {}),
           displayName: input.displayName,
           lastLoginAt: input.now,
         },
@@ -122,9 +124,15 @@ export function createAuthRepository(prisma: PrismaClient): AuthRepository {
   };
 }
 
-function asIdentity(user: { id: string; dingtalkUserId: string; displayName: string }) {
+function asIdentity(user: {
+  id: string;
+  dingtalkUserId: string;
+  dingtalkUnionId: string | null;
+  displayName: string;
+}) {
   return {
     dingtalkUserId: user.dingtalkUserId,
+    ...(user.dingtalkUnionId ? { dingtalkUnionId: user.dingtalkUnionId } : {}),
     displayName: user.displayName,
     id: user.id,
   };

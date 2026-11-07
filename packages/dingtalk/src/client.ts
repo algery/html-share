@@ -1,5 +1,7 @@
 import type { DingTalkIdentity } from "@html-share/core";
 
+import { simulatorIdentity } from "./directory-simulator.js";
+
 export class DingTalkAuthorizationError extends Error {
   constructor(
     readonly code: "AUTHORIZATION_DENIED" | "PROVIDER_UNAVAILABLE",
@@ -101,21 +103,14 @@ async function resolveSimulatorIdentity(
 ): Promise<DingTalkIdentity> {
   const startedAt = performance.now();
   reportSafely(reportDiagnostic, { outcome: "started", stage: "simulator_identity" });
-  if (code === "simulator-member" || code === "simulator-external-member") {
+  const identity = simulatorIdentity(code);
+  if (identity) {
     reportSafely(reportDiagnostic, {
       durationMs: elapsedMilliseconds(startedAt),
       outcome: "succeeded",
       stage: "simulator_identity",
     });
-    return { dingtalkUserId: "simulator-user-001", displayName: "模拟组织成员" };
-  }
-  if (code === "simulator-member-002") {
-    reportSafely(reportDiagnostic, {
-      durationMs: elapsedMilliseconds(startedAt),
-      outcome: "succeeded",
-      stage: "simulator_identity",
-    });
-    return { dingtalkUserId: "simulator-user-002", displayName: "模拟非创建者" };
+    return identity;
   }
   const details = {
     failureReason: "provider_rejected",
@@ -242,7 +237,12 @@ function readIdentity(payload: unknown): DingTalkIdentity | undefined {
   ) {
     return undefined;
   }
-  return { dingtalkUserId: payload["openId"], displayName: payload["nick"] };
+  const unionId = payload["unionId"];
+  return {
+    dingtalkUserId: payload["openId"],
+    displayName: payload["nick"],
+    ...(typeof unionId === "string" && unionId.trim() ? { dingtalkUnionId: unionId } : {}),
+  };
 }
 
 async function readJsonPayload(response: Response): Promise<unknown> {

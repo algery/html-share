@@ -13,7 +13,7 @@ export function createMysqlAuthRepository(prisma: MysqlClient): AuthRepository {
         // update identity data until its complete source string is verified.
         await tx.$executeRaw`INSERT INTO tenants
           (id, name, dingtalk_app_key_ref, updated_at)
-          VALUES (${randomUUID()}, 'HTML Share organization', ${input.tenantAppKeyRef}, ${input.now})
+          VALUES (${randomUUID()}, 'demo share organization', ${input.tenantAppKeyRef}, ${input.now})
           ON DUPLICATE KEY UPDATE id = id`;
         const tenants = await tx.$queryRaw<{ id: string; appKey: string }[]>`
           SELECT id, dingtalk_app_key_ref AS appKey FROM tenants
@@ -35,7 +35,11 @@ export function createMysqlAuthRepository(prisma: MysqlClient): AuthRepository {
         assertSameText(user.dingtalkUserId, input.dingtalkUserId);
         await tx.user.update({
           where: { id: user.id },
-          data: { displayName: input.displayName, lastLoginAt: input.now },
+          data: {
+            displayName: input.displayName,
+            lastLoginAt: input.now,
+            ...(input.dingtalkUnionId ? { dingtalkUnionId: input.dingtalkUnionId } : {}),
+          },
         });
         return { id: user.id };
       });
@@ -97,6 +101,9 @@ export function createMysqlAuthRepository(prisma: MysqlClient): AuthRepository {
         user: {
           id: session.user.id,
           dingtalkUserId: session.user.dingtalkUserId,
+          ...(session.user.dingtalkUnionId
+            ? { dingtalkUnionId: session.user.dingtalkUnionId }
+            : {}),
           displayName: session.user.displayName,
         },
       };

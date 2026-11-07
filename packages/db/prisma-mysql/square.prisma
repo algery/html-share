@@ -1,0 +1,51 @@
+model ProjectSquareSettings {
+  id                  String      @id @default(uuid()) @db.Char(36)
+  tenantId            String      @map("tenant_id") @db.Char(36)
+  projectId           String      @unique @map("project_id") @db.Char(36)
+  enabled             Boolean     @default(false)
+  audienceType        String?     @map("audience_type") @db.VarChar(20)
+  settingsVersion     Int         @default(0) @map("settings_version")
+  selectedDepartments Json        @map("selected_departments")
+  selectedUsers       Json        @map("selected_users")
+  publishedAt         DateTime?   @map("published_at") @db.DateTime(3)
+  createdAt           DateTime    @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime    @updatedAt @map("updated_at") @db.DateTime(3)
+  project             DemoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, enabled])
+  @@map("project_square_settings")
+}
+
+model ProjectSquareAudience {
+  id        String      @id @default(uuid()) @db.Char(36)
+  tenantId  String      @map("tenant_id") @db.Char(36)
+  projectId String      @map("project_id") @db.Char(36)
+  type      String      @db.VarChar(20)
+  subjectId String      @map("subject_id") @db.VarChar(191)
+  createdAt DateTime    @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime    @updatedAt @map("updated_at") @db.DateTime(3)
+  project   DemoProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, type, subjectId])
+  @@index([tenantId, type, subjectId])
+  @@map("project_square_audiences")
+}
+
+model SquareAuditLog {
+  id              String   @id @default(uuid()) @db.Char(36)
+  tenantId        String   @map("tenant_id") @db.Char(36)
+  actorUserId     String   @map("actor_user_id") @db.Char(36)
+  projectId       String?  @map("project_id") @db.Char(36)
+  action          String   @db.VarChar(20)
+  result          String   @db.VarChar(80)
+  settingsVersion Int      @map("settings_version")
+  requestIp       String   @map("request_ip") @db.VarChar(64)
+  traceId         String   @map("trace_id") @db.VarChar(64)
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("square_audit_logs")
+}

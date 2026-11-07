@@ -64,7 +64,15 @@ export function inspectContent(content) {
       /^PASSWORD_VERIFY_(?:IP|IP_PROJECT|PROJECT)_RATE_LIMIT_PER_MINUTE$/.test(match[1]) &&
       /^[1-9][0-9]{0,5}$/.test(value) &&
       Number(value) <= 100_000;
-    if (!SAFE_EXAMPLE_VALUES.test(value) && !isSyntheticPasswordKey && !isPasswordRateLimit) {
+    // Fixed credential used only by the documented isolated MinIO test harness.
+    const isIsolatedMinioFixture =
+      match[1] === "PHASE9_MINIO_ACCESS_KEY_SECRET" && value === "local-password-test-only";
+    if (
+      !SAFE_EXAMPLE_VALUES.test(value) &&
+      !isSyntheticPasswordKey &&
+      !isPasswordRateLimit &&
+      !isIsolatedMinioFixture
+    ) {
       findings.push(`non-placeholder-${match[1]}`);
     }
   }

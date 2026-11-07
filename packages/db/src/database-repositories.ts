@@ -4,8 +4,11 @@ import {
   PasswordManagementError,
   ProjectDeletionError,
   UploadError,
+  SquareError,
 } from "@html-share/core";
 
+import { createSquareRepository } from "./square-repository.js";
+import { createMysqlSquareRepository } from "./mysql/square-repository.js";
 import { createAuthRepository } from "./auth-repository.js";
 import { createMcpTokenRepository } from "./mcp-token-repository.js";
 import { createProjectReader } from "./project-reader.js";
@@ -31,6 +34,7 @@ import type { DatabaseConnection } from "./database-client.js";
 
 export interface DatabaseRepositories {
   auth: ReturnType<typeof createAuthRepository>;
+  square: ReturnType<typeof createSquareRepository>;
   mcpTokens: ReturnType<typeof createMcpTokenRepository>;
   projects: ReturnType<typeof createProjectReader>;
   passwordAccess: ReturnType<typeof createPasswordAccessRepository>;
@@ -57,6 +61,7 @@ function protectedRepository<T extends object>(repository: T): T {
             error instanceof PasswordManagementError ||
             error instanceof ProjectDeletionError ||
             error instanceof UploadError ||
+            error instanceof SquareError ||
             error instanceof DatabaseOperationError
           )
             throw error;
@@ -75,6 +80,7 @@ export function createDatabaseRepositories(
     const client = connection.client;
     return {
       auth: protectedRepository(createMysqlAuthRepository(client)),
+      square: protectedRepository(createMysqlSquareRepository(client)),
       mcpTokens: protectedRepository(createMysqlMcpTokenRepository(client)),
       projects: protectedRepository(createMysqlProjectReader(client)),
       passwordAccess: protectedRepository(createMysqlPasswordAccessRepository(client)),
@@ -89,6 +95,7 @@ export function createDatabaseRepositories(
   const client = connection.client;
   return {
     auth: protectedRepository(createAuthRepository(client)),
+    square: protectedRepository(createSquareRepository(client)),
     mcpTokens: protectedRepository(createMcpTokenRepository(client)),
     projects: protectedRepository(createProjectReader(client)),
     passwordAccess: protectedRepository(createPasswordAccessRepository(client)),

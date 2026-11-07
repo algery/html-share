@@ -1,5 +1,7 @@
 import { EnvironmentValidationError, readDingTalkEnv, readServerEnv } from "@html-share/config";
 import {
+  createSquareService,
+  MAX_DEMOS_PER_USER,
   createAuthSessionService,
   createMcpTokenService,
   createProjectDeletionService,
@@ -13,6 +15,7 @@ import { createLiveDingTalkClient, createSimulatorDingTalkClient } from "@html-s
 import { createObjectStore } from "@html-share/storage";
 
 import { buildServerApp } from "./app.js";
+import { buildDirectoryService } from "./app-directory.js";
 
 function loadEnvironment() {
   try {
@@ -35,6 +38,7 @@ if (process.env["DATABASE_DEPLOYMENT_TARGET_FILE"] !== undefined) {
   });
 }
 const environment = loadEnvironment();
+const maxDemosPerUser = environment.server.MAX_DEMOS_PER_USER ?? MAX_DEMOS_PER_USER;
 const passwordCrypto = createPasswordCrypto(environment.server.PASSWORD_RESULT_ENCRYPTION_KEY);
 const passwordManagementCrypto = createPasswordCrypto(
   environment.server.PASSWORD_MANAGEMENT_ENCRYPTION_KEY,
@@ -44,6 +48,7 @@ const repositories = await openDatabaseRepositories(
   {
     passwordCrypto,
     passwordManagementCrypto,
+    maxDemosPerUser,
   },
   environment.server.DATABASE_DEPLOYMENT_TARGET_FILE === undefined
     ? undefined
@@ -78,6 +83,7 @@ const dingtalk =
         externalAuthorizeUrl: environment.dingtalk.DINGTALK_EXTERNAL_AUTHORIZE_URL,
       });
 const projects = repositories.projects;
+const directory = buildDirectoryService(environment.dingtalk);
 const projectDeletion = createProjectDeletionService({
   administratorDingTalkUserIds: readAdministratorIds(environment.server.ADMIN_DINGTALK_USER_IDS),
   repository: repositories.deletion,
@@ -88,6 +94,12 @@ const passwordManagement = createPasswordManagementService({
 });
 const app = buildServerApp({
   readiness: repositories.readiness,
+  directory,
+  square: createSquareService({
+    repository: repositories.square,
+    directory,
+    demoWebUrl: environment.server.DEMO_WEB_URL,
+  }),
   passwordStateSecret: environment.server.AUTH_STATE_SECRET,
   passwordAccess: createPasswordAccessService({
     repository: repositories.passwordAccess,
@@ -123,6 +135,7 @@ const app = buildServerApp({
   }),
   projects,
   projectManagement: projects,
+  maxDemosPerUser,
   projectDeletion,
   rateLimits: {
     authPerMinute: environment.server.AUTH_RATE_LIMIT_PER_MINUTE,

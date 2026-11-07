@@ -20,7 +20,7 @@ afterEach(async () => {
   );
 });
 
-describe("Phase 6 HTML Share Skill", () => {
+describe("Phase 6 demo share Skill", () => {
   it("creates a stable per-file manifest with SHA-256, Content-MD5, and server-compatible MIME", async () => {
     const directory = await fixture({
       "assets/logo.txt": "logo",

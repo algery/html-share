@@ -106,6 +106,47 @@ describe("live DingTalk authorization client", () => {
     expect(JSON.stringify(diagnostics)).not.toContain("rejected-code");
   });
 
+  it("adds verified unionId while preserving the established openId login key", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response(JSON.stringify({ accessToken: "token" })))
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              nick: "成员",
+              openId: "legacy-open-id",
+              unionId: "verified-union-id",
+            }),
+          ),
+        ),
+    );
+    await expect(client().exchangeInternalAuthorizationCode("valid-code")).resolves.toEqual({
+      dingtalkUserId: "legacy-open-id",
+      dingtalkUnionId: "verified-union-id",
+      displayName: "成员",
+    });
+  });
+
+  it("ignores an absent or empty unionId without breaking legacy login", async () => {
+    for (const unionId of [undefined, "", " ", null]) {
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce(new Response(JSON.stringify({ accessToken: "token" })))
+          .mockResolvedValueOnce(
+            new Response(JSON.stringify({ nick: "成员", openId: "legacy-open-id", unionId })),
+          ),
+      );
+      await expect(client().exchangeInternalAuthorizationCode("valid-code")).resolves.toEqual({
+        dingtalkUserId: "legacy-open-id",
+        displayName: "成员",
+      });
+    }
+  });
+
   it("distinguishes malformed success responses from provider rejections", async () => {
     const diagnostics: DingTalkAuthorizationDiagnostic[] = [];
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({}))));
@@ -209,6 +250,10 @@ describe("simulator DingTalk authorization client", () => {
   it("provides a distinct non-owner identity for authorization integration tests", async () => {
     await expect(
       createSimulatorDingTalkClient().exchangeInternalAuthorizationCode("simulator-member-002"),
-    ).resolves.toEqual({ dingtalkUserId: "simulator-user-002", displayName: "模拟非创建者" });
+    ).resolves.toEqual({
+      dingtalkUserId: "simulator-user-002",
+      dingtalkUnionId: "simulator-union-002",
+      displayName: "模拟非创建者",
+    });
   });
 });

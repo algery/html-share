@@ -1,4 +1,7 @@
+import { setTimeout } from "node:timers/promises";
 import { expect, it } from "vitest";
+
+import { createDatabaseRepositories } from "../packages/db/src/database-repositories.ts";
 
 import { databaseContract, manifest } from "./database-contract-fixture.mjs";
 
@@ -46,6 +49,69 @@ databaseContract("idempotency and quota reservations", (current) => {
     expect(
       await f.service.prepare(f.request({ action: "replace", projectId: keys[0] })),
     ).toMatchObject({ status: "prepared", projectId: keys[0] });
+  });
+
+  it("enforces a configured two-project limit, including pending uploads", async () => {
+    const f = current();
+    const [existingKey] = await f.seedActive(1);
+    const uploads = createDatabaseRepositories(f.connection, { maxDemosPerUser: 2 }).uploads;
+    const prepare = (request) =>
+      uploads.prepare({ ...request, fileCount: 1, totalSize: 3, now: f.now });
+    const create = f.request();
+    const pending = await prepare(create);
+    await expect(prepare(f.request())).rejects.toMatchObject({ code: "PROJECT_QUOTA_EXCEEDED" });
+    await expect(prepare(create)).resolves.toMatchObject({
+      uploadId: pending.uploadId,
+      idempotent: true,
+    });
+    await expect(
+      prepare(f.request({ action: "replace", projectId: existingKey })),
+    ).resolves.toMatchObject({ projectId: existingKey, status: "prepared" });
+  });
+
+  it("serializes publication with quota checks for the same account", async () => {
+    const f = current();
+    const task = await f.ready(await f.service.prepare(f.request()));
+    let publication;
+    let settled = false;
+    try {
+      await f.db.$transaction(
+        async (tx) => {
+          if (f.provider === "postgresql") {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${f.owner.id}))`;
+          } else {
+            await tx.$queryRaw`SELECT id FROM users WHERE id = ${f.owner.id} FOR UPDATE`;
+          }
+          publication = f.second.uploads.publishUpload({ uploadId: task.id, now: f.now });
+          void publication.then(
+            () => {
+              settled = true;
+            },
+            () => {
+              settled = true;
+            },
+          );
+          const deadline = Date.now() + 3_000;
+          while (!settled && Date.now() < deadline) {
+            const rows =
+              f.provider === "postgresql"
+                ? await f.db.$queryRaw`SELECT COUNT(*) AS blocked FROM pg_stat_activity
+                WHERE datname = current_database() AND wait_event = 'advisory'`
+                : await f.db.$queryRaw`SELECT COUNT(*) AS blocked
+                FROM performance_schema.data_lock_waits w
+                JOIN performance_schema.data_locks l ON l.ENGINE_LOCK_ID = w.REQUESTING_ENGINE_LOCK_ID
+                WHERE l.OBJECT_SCHEMA = DATABASE() AND l.OBJECT_NAME = 'users'`;
+            if (Number(rows[0]?.blocked) > 0) return;
+            await setTimeout(10);
+          }
+          throw new Error("Publication did not wait for the account quota lock");
+        },
+        { timeout: 5_000 },
+      );
+    } finally {
+      await publication;
+    }
+    expect(await publication).toBe(true);
   });
 
   it("serializes 2 GiB storage reservations exactly and releases failed and expired reservations", async () => {

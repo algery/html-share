@@ -14,6 +14,7 @@ export function createMysqlProjectReader(
     async findOwnedActiveProject(input) {
       const project = await prisma.demoProject.findFirst({
         select: {
+          squareSettings: { select: { enabled: true } },
           accessMode: true,
           createdAt: true,
           displayName: true,
@@ -39,9 +40,10 @@ export function createMysqlProjectReader(
         },
       });
       if (project?.currentRevision === null || project === null) return null;
-      const { currentRevision, ...summary } = project;
+      const { currentRevision, squareSettings, ...summary } = project;
       return {
         ...summary,
+        squareEnabled: squareSettings?.enabled ?? false,
         accessMode: summary.accessMode === "password" ? "password" : "organization",
         totalSize: Number(summary.totalSize),
         files: currentRevision.files.map((file) => ({
@@ -84,6 +86,7 @@ export function createMysqlProjectReader(
       const projects = await prisma.demoProject.findMany({
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
         select: {
+          squareSettings: { select: { enabled: true } },
           accessMode: true,
           createdAt: true,
           displayName: true,
@@ -100,8 +103,9 @@ export function createMysqlProjectReader(
         },
       });
       return {
-        projects: projects.map(({ currentRevision, ...project }) => ({
+        projects: projects.map(({ currentRevision, squareSettings, ...project }) => ({
           ...project,
+          squareEnabled: squareSettings?.enabled ?? false,
           htmlPaths:
             currentRevision?.status === RevisionStatus.ACTIVE
               ? currentRevision.files

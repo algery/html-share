@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { Brand } from "../../components/brand";
 import { DingTalkInAppLogin } from "../../components/dingtalk-in-app-login";
 import { resolveLoginState } from "../../lib/login-state";
 
@@ -17,7 +18,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md items-center px-4 py-8 sm:px-6">
       <section className="surface w-full">
-        <p className="text-sm font-semibold text-blue-700">HTML Share</p>
+        <Brand />
         <h1 className="page-title mt-4">{state.title}</h1>
         <p className="page-description mt-3">{state.description}</p>
 

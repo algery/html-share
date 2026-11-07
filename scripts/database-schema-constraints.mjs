@@ -100,7 +100,9 @@ export function unsupportedMysqlAlterations(sql) {
     }
     start += 1;
     if (tokens[start] === "constraint") start += 2;
-    if (!["foreign", "check", "primary", "unique", "index", "key"].includes(tokens[start]))
+    if (
+      !["foreign", "check", "primary", "unique", "index", "key", "column"].includes(tokens[start])
+    )
       issues.push(`Unsupported MySQL ALTER on ${tokens[index + 2]}`);
     // Multiple operations need replay support before they can be accepted.
     let depth = 0;

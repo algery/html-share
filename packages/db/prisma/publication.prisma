@@ -5,6 +5,7 @@ model Tenant {
   status               TenantStatus          @default(ACTIVE)
   createdAt            DateTime              @default(now()) @map("created_at")
   updatedAt            DateTime              @updatedAt @map("updated_at")
+  squareAudits         SquareAuditLog[]
   users                User[]
   demoProjects         DemoProject[]
   passwordAccessGrants PasswordAccessGrant[]
@@ -15,6 +16,7 @@ model Tenant {
 model User {
   id                String             @id @default(uuid()) @db.Uuid
   tenantId          String             @map("tenant_id") @db.Uuid
+  dingtalkUnionId   String?            @map("dingtalk_union_id") @db.VarChar(191)
   dingtalkUserId    String             @map("dingtalk_user_id")
   displayName       String             @map("display_name")
   status            UserStatus         @default(ACTIVE)
@@ -53,6 +55,8 @@ model DemoProject {
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   owner                User                  @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
   currentRevision      Revision?             @relation("CurrentRevision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
+  squareSettings       ProjectSquareSettings?
+  squareAudience       ProjectSquareAudience[]
   revisions            Revision[]            @relation("ProjectRevisions")
   uploadTasks          UploadTask[]
   fileObjects          FileObject[]

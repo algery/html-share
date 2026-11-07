@@ -23,8 +23,9 @@ import {
   assertSameUploadRequest,
   generatePasswordCandidate,
   pendingPasswordData,
-  type PasswordCrypto,
 } from "./password-upload-policy.js";
+
+import type { UploadRepositoryOptions } from "./upload-repository.js";
 
 type Transaction = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0];
 type PrepareInput = Parameters<UploadRepository["prepare"]>[0];
@@ -32,8 +33,11 @@ type PrepareInput = Parameters<UploadRepository["prepare"]>[0];
 export async function prepareUpload(
   prisma: PrismaClient,
   input: PrepareInput,
-  crypto?: PasswordCrypto,
-  managementCrypto?: PasswordCrypto,
+  {
+    passwordCrypto: crypto,
+    passwordManagementCrypto: managementCrypto,
+    maxDemosPerUser = MAX_DEMOS_PER_USER,
+  }: UploadRepositoryOptions,
 ) {
   // Expiry must commit before this request can acquire any project lock.
   await prisma.$transaction((tx) => expireUploadTasks(tx, input.now));
@@ -69,7 +73,7 @@ export async function prepareUpload(
       // Failed/expired creates released their reservation. Reusing the pending
       // project must reserve quota again under the same owner advisory lock.
       if (input.action === "create")
-        await assertCreateQuota(tx, input.owner.id, input.totalSize, input.now);
+        await assertCreateQuota(tx, input.owner.id, input.totalSize, input.now, maxDemosPerUser);
       const project =
         input.action === "replace"
           ? await findOwnedProject(tx, requiredProjectId(input.projectId), input.owner.id)
@@ -169,6 +173,7 @@ async function assertCreateQuota(
   ownerUserId: string,
   requestedBytes: number,
   now: Date,
+  maxDemosPerUser: number,
 ) {
   const [activeCount, activeBytes, reservations] = await Promise.all([
     tx.demoProject.count({ where: { ownerUserId, status: DemoProjectStatus.ACTIVE } }),
@@ -185,7 +190,7 @@ async function assertCreateQuota(
       },
     }),
   ]);
-  if (activeCount + (reservations._sum.projectDelta ?? 0) >= MAX_DEMOS_PER_USER)
+  if (activeCount + (reservations._sum.projectDelta ?? 0) >= maxDemosPerUser)
     throw new UploadError("PROJECT_QUOTA_EXCEEDED");
   const usedBytes =
     Number(activeBytes._sum.totalSize ?? 0n) + Number(reservations._sum.storageBytes ?? 0n);

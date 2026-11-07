@@ -124,6 +124,9 @@ function requestAction(url: string) {
   const pathname = url.split("?", 1)[0] ?? "/";
   if (pathname.startsWith("/auth/")) return "authorization";
   if (pathname === "/mcp") return "mcp";
+  if (pathname.startsWith("/api/square/")) return "project_square";
+  if (pathname.startsWith("/api/directory/")) return "organization_directory";
+  if (/^\/api\/projects\/[^/]+\/square$/.test(pathname)) return "square_settings";
   if (pathname.startsWith("/api/projects")) return "project_management";
   if (pathname.startsWith("/api/tokens")) return "token_management";
   if (pathname.startsWith("/api/admin/")) return "admin_deletion";
