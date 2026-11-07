@@ -63,6 +63,20 @@
     background: #fff;
     padding: 24px;
   }
+  .project-setting-row {
+    display: grid;
+    min-width: 0;
+    align-items: start;
+    gap: 12px;
+    padding: 16px;
+  }
+  @media (min-width: 768px) {
+    .project-setting-row {
+      grid-template-columns: minmax(160px, 1fr) minmax(0, 3fr);
+      column-gap: 32px;
+      padding: 20px 24px;
+    }
+  }
   .field {
     min-height: 40px;
     width: 100%;

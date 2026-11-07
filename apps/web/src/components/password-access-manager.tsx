@@ -94,84 +94,93 @@ export function PasswordAccessManager({
   }
 
   return (
-    <section aria-labelledby="access-title" className="surface" ref={sectionRef} tabIndex={-1}>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h2 className="section-title" id="access-title">
-            访问方式
-          </h2>
-          <p className="mt-1 text-sm text-slate-600">
-            {access.accessMode === "password" ? "密码访问" : "组织访问"}
-          </p>
-        </div>
-        {access.accessMode === "organization" ? (
-          <button
-            className={secondaryButton}
-            onClick={(event) => openConfirmation("enable", event.currentTarget)}
-            type="button"
-          >
-            开启密码访问
-          </button>
-        ) : (
-          <div className="flex flex-wrap gap-2">
+    <section
+      aria-labelledby="access-title"
+      className="project-setting-row"
+      ref={sectionRef}
+      tabIndex={-1}
+    >
+      <div className="min-w-0">
+        <h2 className="section-title" id="access-title">
+          访问方式
+        </h2>
+        <p className="mt-1 text-sm text-slate-600">
+          {access.accessMode === "password" ? "密码访问" : "组织访问"}
+        </p>
+      </div>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-3">
+          {access.accessMode === "password" && access.passwordStatus === "available" ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 rounded-lg bg-slate-50 p-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-slate-500">当前访问密码</p>
+                <code className="mt-1 block select-all break-all text-lg font-semibold tracking-wider">
+                  {access.accessPassword}
+                </code>
+              </div>
+              <CopyCodeButton compact label="复制密码" value={access.accessPassword ?? ""} />
+            </div>
+          ) : null}
+          {access.accessMode === "organization" ? (
             <button
               className={secondaryButton}
-              onClick={(event) => openConfirmation("regenerate", event.currentTarget)}
+              onClick={(event) => openConfirmation("enable", event.currentTarget)}
               type="button"
             >
-              重新生成密码
+              开启密码访问
             </button>
-            <button
-              className={`${secondaryButton} text-rose-700`}
-              onClick={(event) => openConfirmation("disable", event.currentTarget)}
-              type="button"
-            >
-              关闭密码访问
-            </button>
-          </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              <button
+                className={secondaryButton}
+                onClick={(event) => openConfirmation("regenerate", event.currentTarget)}
+                type="button"
+              >
+                重新生成密码
+              </button>
+              <button
+                className={`${secondaryButton} text-rose-700`}
+                onClick={(event) => openConfirmation("disable", event.currentTarget)}
+                type="button"
+              >
+                关闭密码访问
+              </button>
+            </div>
+          )}
+        </div>
+        {access.accessMode === "password" && access.passwordStatus === "unavailable" ? (
+          <p
+            className="mt-4 rounded-lg bg-amber-50 p-4 text-sm leading-6 text-amber-950"
+            role="status"
+          >
+            历史密码不可显示。原密码仍可访问；如需在管理端查看，请明确选择“重新生成密码”。
+          </p>
+        ) : null}
+        {error === null ? null : (
+          <p className="mt-4 text-sm text-rose-700" role="alert">
+            {error.message}
+            {error.login ? (
+              <Link
+                className="ml-2 inline-flex min-h-10 items-center font-semibold underline"
+                href="/login"
+              >
+                前往登录
+              </Link>
+            ) : null}
+          </p>
+        )}
+        <p aria-live="polite" className="mt-3 text-sm text-emerald-700 empty:mt-0">
+          {notice}
+        </p>
+        {confirmation === null ? null : (
+          <PasswordAccessConfirmDialog
+            action={confirmation}
+            onCancel={closeConfirmation}
+            onConfirm={() => void submit(confirmation)}
+            submitting={submitting}
+          />
         )}
       </div>
-      {access.accessMode === "password" && access.passwordStatus === "available" ? (
-        <div className="mt-4 rounded-lg bg-slate-50 p-4">
-          <p className="text-xs font-medium text-slate-500">当前访问密码</p>
-          <code className="mt-1 block select-all break-all text-lg font-semibold tracking-wider">
-            {access.accessPassword}
-          </code>
-          <CopyCodeButton label="复制密码" value={access.accessPassword ?? ""} />
-        </div>
-      ) : null}
-      {access.accessMode === "password" && access.passwordStatus === "unavailable" ? (
-        <p
-          className="mt-4 rounded-lg bg-amber-50 p-4 text-sm leading-6 text-amber-950"
-          role="status"
-        >
-          历史密码不可显示。原密码仍可访问；如需在管理端查看，请明确选择“重新生成密码”。
-        </p>
-      ) : null}
-      {error === null ? null : (
-        <p className="mt-4 text-sm text-rose-700" role="alert">
-          {error.message}
-          {error.login ? (
-            <Link
-              className="ml-2 inline-flex min-h-10 items-center font-semibold underline"
-              href="/login"
-            >
-              前往登录
-            </Link>
-          ) : null}
-        </p>
-      )}
-      <p aria-live="polite" className="mt-3 text-sm text-emerald-700">
-        {notice}
-      </p>
-      {confirmation === null ? null : (
-        <PasswordAccessConfirmDialog
-          action={confirmation}
-          onCancel={closeConfirmation}
-          onConfirm={() => void submit(confirmation)}
-          submitting={submitting}
-        />
-      )}
     </section>
   );
 }
