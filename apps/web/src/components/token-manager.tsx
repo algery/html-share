@@ -154,7 +154,7 @@ export function TokenManager({ apiUrl }: TokenManagerProps) {
             onClick={() => setIsGuideOpen((current) => !current)}
             type="button"
           >
-            {isGuideOpen ? "收起连接配置" : "查看 Codex / Claude Code 配置"}
+            {isGuideOpen ? "收起连接配置" : "手动添加 MCP / 安装 Skill"}
           </button>
         </div>
         {isGuideOpen ? (
