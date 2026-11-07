@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import type { ObjectStore } from "@html-share/storage";
 import {
   createAuthSessionService,
   createMcpTokenService,
@@ -23,15 +24,13 @@ export const squareProject: SquareStoredProject = {
   homepagePath: null,
   files: [{ relativePath: "中文/页面 #.html", size: 3 }],
 };
-export function squareTestApp() {
+export function squareTestApp(storage?: ObjectStore) {
   const repository: SquareRepository = {
     findOwnedSettings: vi.fn().mockResolvedValue(emptySquareSettings()),
-    saveOwnedSettings: vi
-      .fn()
-      .mockImplementation(async ({ settings, expectedVersion }) => ({
-        ...settings,
-        settingsVersion: expectedVersion + 1,
-      })),
+    saveOwnedSettings: vi.fn().mockImplementation(async ({ settings, expectedVersion }) => ({
+      ...settings,
+      settingsVersion: expectedVersion + 1,
+    })),
     recordFailure: vi.fn().mockResolvedValue(undefined),
     listVisible: vi
       .fn()
@@ -75,6 +74,7 @@ export function squareTestApp() {
       demoWebUrl: "http://demo.localhost:3001",
     }),
     directory,
+    ...(storage ? { storage } : {}),
     logger: false,
   });
   return { app, repository, directory };

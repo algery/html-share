@@ -1,17 +1,36 @@
+import { createHash } from "node:crypto";
+
 import {
   emptySquareSettings,
+  resolveHomepage,
+  type SquareStoredCover,
   type SquareSettings,
   type SquareStoredProject,
   type SquareVisibility,
 } from "@html-share/core";
 
 export const squareProjectSelect = {
+  id: true,
   projectKey: true,
+  tenantId: true,
+  currentRevisionId: true,
   displayName: true,
   fileCount: true,
   totalSize: true,
   homepagePath: true,
+  updatedAt: true,
+  squareSettings: { select: { settingsVersion: true } },
   owner: { select: { displayName: true } },
+  squareCover: {
+    select: {
+      tenantId: true,
+      revisionId: true,
+      homepagePath: true,
+      targetHash: true,
+      status: true,
+      privateImageKey: true,
+    },
+  },
   currentRevision: {
     select: {
       publishedAt: true,
@@ -52,12 +71,57 @@ export function squareVisibleWhere(input: SquareVisibility) {
   };
 }
 
+export function squareSearchWhere({ q, creator }: { q: string; creator?: string }) {
+  const contains = (value: string) => ({ contains: value.replace(/[\\%_]/g, "\\$&") });
+  return {
+    ...(q ? { displayName: contains(q) } : {}),
+    ...(creator ? { owner: { is: { displayName: contains(creator) } } } : {}),
+  };
+}
+
+interface StoredCoverRow {
+  tenantId: string;
+  revisionId: string;
+  homepagePath: string;
+  targetHash: string;
+  status: string;
+  privateImageKey: string | null;
+}
+
+export function squareCoverTargetHash(input: {
+  tenantId: string;
+  projectId: string;
+  revisionId: string;
+  homepagePath: string;
+  projectUpdatedAt: Date;
+  settingsVersion: number;
+}) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        input.tenantId,
+        input.projectId,
+        input.revisionId,
+        input.homepagePath,
+        input.projectUpdatedAt.toISOString(),
+        input.settingsVersion,
+      ]),
+    )
+    .digest("hex");
+}
+
 export function squareProject(row: {
+  id: string;
   projectKey: string;
+  tenantId: string;
+  currentRevisionId: string | null;
+  squareCover: StoredCoverRow | null;
   displayName: string;
   fileCount: number;
   totalSize: bigint;
   homepagePath: string | null;
+  updatedAt: Date;
+  squareSettings: { settingsVersion: number } | null;
   owner: { displayName: string };
   currentRevision: {
     publishedAt: Date | null;
@@ -65,7 +129,13 @@ export function squareProject(row: {
   } | null;
 }): SquareStoredProject {
   if (!row.currentRevision?.publishedAt) throw new Error("SQUARE_INVALID_REVISION");
+  const homepage = resolveHomepage(
+    row.currentRevision.files.map((file) => file.relativePath),
+    row.homepagePath,
+  ).path;
+  const cover = currentCover(row, homepage);
   return {
+    ...(cover ? { cover } : {}),
     projectKey: row.projectKey,
     displayName: row.displayName,
     fileCount: row.fileCount,
@@ -78,6 +148,35 @@ export function squareProject(row: {
       size: Number(file.size),
     })),
   };
+}
+
+function currentCover(
+  project: Parameters<typeof squareProject>[0],
+  homepage: string | null,
+): SquareStoredCover | undefined {
+  const { squareCover: row, currentRevisionId, tenantId, squareSettings } = project;
+  if (!homepage) return undefined;
+  if (
+    !row ||
+    !squareSettings ||
+    !currentRevisionId ||
+    row.tenantId !== tenantId ||
+    row.revisionId !== currentRevisionId ||
+    row.homepagePath !== homepage ||
+    row.targetHash !==
+      squareCoverTargetHash({
+        tenantId,
+        projectId: project.id,
+        revisionId: currentRevisionId,
+        homepagePath: homepage,
+        projectUpdatedAt: project.updatedAt,
+        settingsVersion: squareSettings.settingsVersion,
+      })
+  )
+    return { status: "pending" };
+  if (row.status === "ready" && row.privateImageKey)
+    return { status: "ready", targetHash: row.targetHash, privateImageKey: row.privateImageKey };
+  return { status: row.status === "failed" ? "failed" : "pending" };
 }
 
 export function squareSettings(

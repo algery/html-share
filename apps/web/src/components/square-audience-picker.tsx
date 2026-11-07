@@ -36,24 +36,26 @@ export function SquareAudiencePicker({
   return (
     <fieldset className="mt-4 min-w-0" disabled={disabled}>
       <legend className="text-sm font-semibold">选择可见范围</legend>
-      <label className="flex min-h-10 items-center gap-2 text-sm">
-        <input
-          checked={draft.audienceType === "organization"}
-          name="square-audience"
-          onChange={() => onChange({ ...draft, audienceType: "organization" })}
-          type="radio"
-        />
-        全组织
-      </label>
-      <label className="flex min-h-10 items-center gap-2 text-sm">
-        <input
-          checked={draft.audienceType === "selected"}
-          name="square-audience"
-          onChange={() => onChange({ ...draft, audienceType: "selected" })}
-          type="radio"
-        />
-        指定部门 / 人员
-      </label>
+      <div className="flex flex-wrap gap-x-6">
+        <label className="flex min-h-10 items-center gap-2 text-sm">
+          <input
+            checked={draft.audienceType === "organization"}
+            name="square-audience"
+            onChange={() => onChange({ ...draft, audienceType: "organization" })}
+            type="radio"
+          />
+          全组织
+        </label>
+        <label className="flex min-h-10 items-center gap-2 text-sm">
+          <input
+            checked={draft.audienceType === "selected"}
+            name="square-audience"
+            onChange={() => onChange({ ...draft, audienceType: "selected" })}
+            type="radio"
+          />
+          指定部门 / 人员
+        </label>
+      </div>
       {draft.audienceType === "selected" ? (
         <>
           <p className="text-xs leading-5 text-slate-500">

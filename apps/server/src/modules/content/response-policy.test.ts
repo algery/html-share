@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { contentTypeForPath } from "./response-policy.js";
+import { contentTypeForPath } from "@html-share/core";
 
 describe("contentTypeForPath", () => {
   it("serves both HTML extensions recognized by archive validation as HTML", () => {

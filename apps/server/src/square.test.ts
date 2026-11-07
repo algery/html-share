@@ -1,7 +1,9 @@
+import { Readable } from "node:stream";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { SquareError } from "@html-share/core";
-import { squareTestApp } from "./square.test-helper.js";
+import { squareProject, squareTestApp } from "./square.test-helper.js";
 import { createAppSession, createDemoSession } from "./phase5-session.test-helper.js";
 
 describe("square HTTP authorization and settings", () => {
@@ -9,8 +11,8 @@ describe("square HTTP authorization and settings", () => {
   afterEach(async () => {
     await Promise.all(apps.splice(0).map((app) => app.close()));
   });
-  async function setup() {
-    const fixture = squareTestApp();
+  async function setup(storage?: Parameters<typeof squareTestApp>[0]) {
+    const fixture = squareTestApp(storage);
     apps.push(fixture.app);
     const cookie = await createAppSession(fixture.app);
     const headers = { host: "app.localhost", cookie };
@@ -44,6 +46,51 @@ describe("square HTTP authorization and settings", () => {
         expect((await app.inject({ url, headers: input })).statusCode).toBe(status);
     }
     expect(repository.findVisible).not.toHaveBeenCalled();
+  });
+  it("requires an app session and a current visible cover before opening storage", async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const getObject = vi.fn(async () => Readable.from([jpeg]));
+    const { app, headers, repository } = await setup({
+      createPresignedUpload: vi.fn(),
+      deleteObjects: vi.fn(),
+      ensurePrivateBucket: vi.fn(),
+      getObject,
+      headObject: vi.fn(),
+      listObjects: vi.fn(),
+    });
+    const targetHash = "a".repeat(64);
+    const key = "square-covers/private.jpg";
+    const url = `/api/square/projects/abc12/cover/${targetHash}`;
+    vi.mocked(repository.findVisible).mockResolvedValue({
+      ...squareProject,
+      cover: { status: "ready", targetHash, privateImageKey: key },
+    });
+    for (const denied of [
+      { host: "app.localhost" },
+      { host: "app.localhost", cookie: await createDemoSession(app) },
+      { ...headers, host: "demo.localhost" },
+    ]) {
+      const response = await app.inject({ url, headers: denied });
+      expect(response.statusCode).toBeGreaterThanOrEqual(400);
+      expect(response.headers["cache-control"]).toBe("private, no-store");
+      expect(response.headers["content-type"]).not.toBe("image/jpeg");
+    }
+    expect(
+      (await app.inject({ url: url.replace(targetHash, "b".repeat(64)), headers })).statusCode,
+    ).toBe(404);
+    expect(getObject).not.toHaveBeenCalled();
+    const response = await app.inject({ url, headers });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers).toMatchObject({
+      "cache-control": "private, no-store",
+      "content-type": "image/jpeg",
+      "x-content-type-options": "nosniff",
+    });
+    expect(response.rawPayload).toEqual(jpeg);
+    expect(getObject).toHaveBeenCalledExactlyOnceWith(key);
+    vi.mocked(repository.findVisible).mockResolvedValue(null);
+    expect((await app.inject({ url, headers })).statusCode).toBe(404);
+    expect(getObject).toHaveBeenCalledTimes(1);
   });
   it("requires CSRF and Origin, parses settings, and lets disable bypass unavailable directory", async () => {
     const { app, headers, writeHeaders, directory, repository } = await setup();
@@ -160,11 +207,22 @@ describe("square HTTP authorization and settings", () => {
       "?pageSize=100",
       "?page=wat",
       "?q=x&q=y",
+      "?creator=" + "x".repeat(81),
+      "?creator=x&creator=y",
     ]) {
       expect((await app.inject({ url: `/api/square/projects${query}`, headers })).statusCode).toBe(
         400,
       );
     }
     expect(repository.listVisible).not.toHaveBeenCalled();
+  });
+  it("forwards both trimmed search fields to the authorized list query", async () => {
+    const { app, headers, repository } = await setup();
+    const params = new URLSearchParams({ q: "  产品 ", creator: " 张三 " });
+    const response = await app.inject({ url: `/api/square/projects?${params}`, headers });
+    expect(response.statusCode).toBe(200);
+    expect(repository.listVisible).toHaveBeenCalledWith(
+      expect.objectContaining({ q: "产品", creator: "张三", page: 1, pageSize: 10 }),
+    );
   });
 });

@@ -54,6 +54,10 @@ export interface SquareChange {
   departmentIds?: string[];
   userIds?: string[];
 }
+export type SquareStoredCover =
+  | { status: "pending" | "failed" }
+  | { status: "ready"; targetHash: string; privateImageKey: string };
+
 export interface SquareStoredProject {
   projectKey: string;
   displayName: string;
@@ -62,6 +66,7 @@ export interface SquareStoredProject {
   fileCount: number;
   totalSize: number;
   homepagePath: string | null;
+  cover?: SquareStoredCover;
   files: { relativePath: string; size: number }[];
 }
 export interface SquareWriteContext extends SquareOwner {
@@ -87,6 +92,7 @@ export interface SquareRepository {
   listVisible(
     input: SquareVisibility & {
       q: string;
+      creator?: string;
       page: number;
       pageSize: number;
     },

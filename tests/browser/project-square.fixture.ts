@@ -187,8 +187,11 @@ export async function mockSquare(page: Page, enabled = false) {
     if (state.listStatus !== 200)
       return route.fulfill({ status: state.listStatus, json: { error: "unavailable" } });
     const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
-    const filtered = state.projects.filter((project) =>
-      project.displayName.toLowerCase().includes(q),
+    const creator = (url.searchParams.get("creator") ?? "").trim();
+    const filtered = state.projects.filter(
+      (project) =>
+        project.displayName.toLowerCase().includes(q) &&
+        project.creatorDisplayName.includes(creator),
     );
     const pageSize = Number(url.searchParams.get("pageSize") ?? 10);
     const requestedPage = Number(url.searchParams.get("page") ?? 1);

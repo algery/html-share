@@ -2,78 +2,44 @@ import Link from "next/link";
 import type { SquareProject } from "../lib/square-types";
 import { formatDate } from "./demo-list";
 import { ManagementIcon } from "./management-icon";
+import { SquareProjectCover } from "./square-project-cover";
 
-export function SquareProjectList({ projects }: { projects: SquareProject[] }) {
+export function SquareProjectList({
+  apiUrl,
+  projects,
+}: {
+  apiUrl: string;
+  projects: SquareProject[];
+}) {
   return (
-    <>
-      <div className="table-shell hidden md:block">
-        <table className="data-table min-w-[820px] table-fixed">
-          <colgroup>
-            <col />
-            <col className="w-40" />
-            <col className="w-44" />
-            <col className="w-64" />
-          </colgroup>
-          <thead>
-            <tr>
-              {["名称", "创建者", "内容更新时间", "查看"].map((label) => (
-                <th className="px-4 py-3" key={label}>
-                  {label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {projects.map((project) => (
-              <tr key={project.projectId}>
-                <td className="min-w-60 px-4 py-3">
-                  <Link
-                    className="block truncate font-medium text-slate-950 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-blue-700"
-                    href={`/square/${encodeURIComponent(project.projectId)}`}
-                    title={project.displayName}
-                  >
-                    {project.displayName}
-                  </Link>
-                </td>
-                <td className="break-words px-4 py-3 text-sm text-slate-600">
-                  {project.creatorDisplayName}
-                </td>
-                <td className="px-4 py-3 text-xs text-slate-500">
-                  {formatDate(project.updatedAt)}
-                </td>
-                <td className="px-4 py-2">
-                  <SquareProjectActions project={project} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="grid gap-3 md:hidden">
-        {projects.map((project) => (
-          <article
-            className="min-w-0 rounded-lg border border-slate-200 bg-white p-4"
-            key={project.projectId}
-          >
-            <h2 className="break-words font-semibold">
-              <Link
-                className="inline-flex min-h-10 items-center hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-blue-700"
-                href={`/square/${encodeURIComponent(project.projectId)}`}
-              >
-                {project.displayName}
-              </Link>
-            </h2>
-            <p className="mt-1 break-words text-xs text-slate-500">
-              创建者 {project.creatorDisplayName}
-            </p>
-            <p className="mt-2 text-xs text-slate-500">内容更新 {formatDate(project.updatedAt)}</p>
-            <div className="mt-3 border-t border-slate-200 pt-3">
-              <SquareProjectActions project={project} />
+    <div aria-label="项目卡片" className="square-cover-columns" role="list">
+      {projects.map((project) => (
+        <div className="square-cover-item" key={project.projectId} role="listitem">
+          <article className="min-w-0 rounded-lg border border-slate-200 bg-white">
+            <SquareProjectCover apiUrl={apiUrl} project={project} />
+            <div className="p-4">
+              <h2 className="wrap-anywhere font-semibold">
+                <Link
+                  className="inline-flex min-h-10 items-center hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-blue-700"
+                  href={`/square/${encodeURIComponent(project.projectId)}`}
+                >
+                  {project.displayName}
+                </Link>
+              </h2>
+              <p className="mt-1 wrap-anywhere text-xs text-slate-500">
+                创建者 {project.creatorDisplayName}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                内容更新 {formatDate(project.updatedAt)}
+              </p>
+              <div className="mt-3 border-t border-slate-200 pt-3">
+                <SquareProjectActions project={project} />
+              </div>
             </div>
           </article>
-        ))}
-      </div>
-    </>
+        </div>
+      ))}
+    </div>
   );
 }
 

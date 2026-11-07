@@ -96,23 +96,23 @@ async function createContractFixture(provider) {
       ...overrides,
     };
   }
-  async function ready(prepared) {
-    await service.complete({ ownerUserId: owner.id, uploadId: prepared.uploadId });
+  async function ready(prepared, ownerUserId = owner.id) {
+    await service.complete({ ownerUserId, uploadId: prepared.uploadId });
     await repositories.uploads.markUploadFilesVerified({ uploadId: prepared.uploadId, now });
     const task = await db.uploadTask.findUniqueOrThrow({ where: { id: prepared.uploadId } });
     targets.push(task.id, task.revisionId, task.projectId);
     return task;
   }
-  async function publish(prepared) {
-    await ready(prepared);
+  async function publish(prepared, ownerUserId = owner.id) {
+    await ready(prepared, ownerUserId);
     if (!(await repositories.uploads.publishUpload({ uploadId: prepared.uploadId, now }))) {
       throw new Error("Contract fixture publication unexpectedly failed");
     }
-    return service.status({ ownerUserId: owner.id, uploadId: prepared.uploadId });
+    return service.status({ ownerUserId, uploadId: prepared.uploadId });
   }
   async function project(overrides = {}) {
     const prepared = await service.prepare(request(overrides));
-    const result = await publish(prepared);
+    const result = await publish(prepared, overrides.owner?.id);
     const stored = await db.demoProject.findUniqueOrThrow({
       where: { projectKey: prepared.projectId },
     });

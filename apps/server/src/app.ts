@@ -197,6 +197,7 @@ export function buildServerApp(options: ServerAppOptions): FastifyInstance {
   registerSquareRoutes(app, {
     ...squareOptions,
     ...(options.square ? { square: options.square } : {}),
+    ...(options.storage === undefined ? {} : { storage: options.storage }),
   });
   registerDirectoryRoutes(app, {
     ...squareOptions,

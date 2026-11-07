@@ -14,7 +14,7 @@ export async function requireSquareSession(
   reply: FastifyReply,
   options: SquareRequestOptions,
   limiter: WindowRateLimiter,
-  action: "read" | "write" | "directory" = "read",
+  action: "read" | "write" | "directory" | "cover" = "read",
 ) {
   reply.header("cache-control", "private, no-store");
   if (request.hostname !== options.appHost) {
@@ -31,7 +31,7 @@ export async function requireSquareSession(
   }
   const limit = limiter.consume(
     JSON.stringify([session.tenantId, session.user.id, action]),
-    action === "write" ? 10 : action === "directory" ? 60 : 120,
+    action === "write" ? 10 : action === "directory" ? 60 : action === "cover" ? 300 : 120,
   );
   if (!limit.allowed) {
     reply

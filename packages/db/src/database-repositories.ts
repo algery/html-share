@@ -7,6 +7,7 @@ import {
   SquareError,
 } from "@html-share/core";
 
+import { createSquareCoverRepository } from "./square-cover-repository.js";
 import { createSquareRepository } from "./square-repository.js";
 import { createMysqlSquareRepository } from "./mysql/square-repository.js";
 import { createAuthRepository } from "./auth-repository.js";
@@ -35,6 +36,7 @@ import type { DatabaseConnection } from "./database-client.js";
 export interface DatabaseRepositories {
   auth: ReturnType<typeof createAuthRepository>;
   square: ReturnType<typeof createSquareRepository>;
+  squareCovers: ReturnType<typeof createSquareCoverRepository>;
   mcpTokens: ReturnType<typeof createMcpTokenRepository>;
   projects: ReturnType<typeof createProjectReader>;
   passwordAccess: ReturnType<typeof createPasswordAccessRepository>;
@@ -81,6 +83,7 @@ export function createDatabaseRepositories(
     return {
       auth: protectedRepository(createMysqlAuthRepository(client)),
       square: protectedRepository(createMysqlSquareRepository(client)),
+      squareCovers: protectedRepository(createSquareCoverRepository(connection)),
       mcpTokens: protectedRepository(createMysqlMcpTokenRepository(client)),
       projects: protectedRepository(createMysqlProjectReader(client)),
       passwordAccess: protectedRepository(createMysqlPasswordAccessRepository(client)),
@@ -96,6 +99,7 @@ export function createDatabaseRepositories(
   return {
     auth: protectedRepository(createAuthRepository(client)),
     square: protectedRepository(createSquareRepository(client)),
+    squareCovers: protectedRepository(createSquareCoverRepository(connection)),
     mcpTokens: protectedRepository(createMcpTokenRepository(client)),
     projects: protectedRepository(createProjectReader(client)),
     passwordAccess: protectedRepository(createPasswordAccessRepository(client)),

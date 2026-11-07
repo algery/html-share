@@ -74,16 +74,22 @@ export function unsupportedPostgresIdentityTail(sql) {
     const squareCreate =
       statement[0] === "create" &&
       statement[1] === "table" &&
-      ["project_square_settings", "project_square_audiences", "square_audit_logs"].includes(
-        statement[5],
-      );
+      [
+        "project_square_settings",
+        "project_square_audiences",
+        "project_square_covers",
+        "square_audit_logs",
+      ].includes(statement[5]);
     const squareIndex =
       statement[0] === "create" &&
       statement[1] === "index" &&
       statement[6] === "on" &&
-      ["project_square_settings", "project_square_audiences", "square_audit_logs"].includes(
-        statement[7],
-      );
+      [
+        "project_square_settings",
+        "project_square_audiences",
+        "project_square_covers",
+        "square_audit_logs",
+      ].includes(statement[7]);
     const unionColumn =
       JSON.stringify(statement) ===
       JSON.stringify([

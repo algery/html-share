@@ -1,4 +1,26 @@
 @layer components {
+  .square-cover-columns {
+    column-count: 1;
+    column-gap: 16px;
+  }
+  .square-cover-item {
+    display: inline-block;
+    width: 100%;
+    margin-bottom: 16px;
+    break-inside: avoid;
+    vertical-align: top;
+  }
+  @media (min-width: 640px) {
+    .square-cover-columns {
+      column-count: 2;
+    }
+  }
+  @media (min-width: 1200px) {
+    .square-cover-columns {
+      column-count: 3;
+    }
+  }
+
   .workspace {
     width: 100%;
     max-width: 1280px;
@@ -40,6 +62,20 @@
     border-radius: 8px;
     background: #fff;
     padding: 24px;
+  }
+  .project-setting-row {
+    display: grid;
+    min-width: 0;
+    align-items: start;
+    gap: 12px;
+    padding: 16px;
+  }
+  @media (min-width: 768px) {
+    .project-setting-row {
+      grid-template-columns: minmax(160px, 1fr) minmax(0, 3fr);
+      column-gap: 32px;
+      padding: 20px 24px;
+    }
   }
   .field {
     min-height: 40px;

@@ -40,7 +40,7 @@ export function createMinioObjectStore(config: ObjectStoreConfig): ObjectStore {
           "content-type": input.contentType,
         },
         url: await getSignedUrl(
-          signingClient,
+          input.internal ? client : signingClient,
           new PutObjectCommand({
             Bucket: config.bucket,
             ContentLength: input.contentLength,
@@ -55,8 +55,11 @@ export function createMinioObjectStore(config: ObjectStoreConfig): ObjectStore {
         ),
       };
     },
-    async getObject(key) {
-      const result = await client.send(new GetObjectCommand({ Bucket: config.bucket, Key: key }));
+    async getObject(key, options) {
+      const result = await client.send(
+        new GetObjectCommand({ Bucket: config.bucket, Key: key }),
+        options?.abortSignal === undefined ? undefined : { abortSignal: options.abortSignal },
+      );
       if (!isReadable(result.Body)) throw new Error("OBJECT_BODY_UNAVAILABLE");
       return result.Body;
     },

@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { SquareService } from "@html-share/core";
+import type { ObjectStore } from "@html-share/storage";
+import { registerSquareCoverRoute } from "./cover.js";
 import { readSessionCookie } from "../auth/cookies.js";
 import { isTrustedWriteRequest } from "../projects/write-request.js";
 import { createWindowRateLimiter } from "../../plugins/rate-limit.js";
@@ -12,9 +14,10 @@ import {
 
 export function registerSquareRoutes(
   app: FastifyInstance,
-  options: SquareRequestOptions & { square?: SquareService },
+  options: SquareRequestOptions & { square?: SquareService; storage?: ObjectStore },
 ) {
   const limiter = createWindowRateLimiter();
+  registerSquareCoverRoute(app, options, limiter);
   app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/square",
     async (request, reply) => {
@@ -67,7 +70,7 @@ export function registerSquareRoutes(
       }
     },
   );
-  app.get<{ Querystring: { q?: string; page?: string; pageSize?: string } }>(
+  app.get<{ Querystring: { q?: string; creator?: string; page?: string; pageSize?: string } }>(
     "/api/square/projects",
     async (request, reply) => {
       const session = await requireSquareSession(request, reply, options, limiter);
@@ -79,6 +82,7 @@ export function registerSquareRoutes(
           userId: session.user.id,
           ...(session.user.dingtalkUnionId ? { unionId: session.user.dingtalkUnionId } : {}),
           ...(request.query.q === undefined ? {} : { q: request.query.q }),
+          ...(request.query.creator === undefined ? {} : { creator: request.query.creator }),
           ...(request.query.page === undefined ? {} : { page: Number(request.query.page) }),
           ...(request.query.pageSize === undefined
             ? {}

@@ -3,16 +3,16 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { ProjectHomepageManager } from "./project-homepage-manager";
-import { ProjectSquareManager } from "./project-square-manager";
-import { CopyCodeButton } from "./copy-code-button";
+import { DemoDetailSettings } from "./demo-detail-settings";
 import { formatBytes, formatDate, type DemoSummary } from "./demo-list";
-import { PasswordAccessManager, type ProjectAccessState } from "./password-access-manager";
+import { ManagementIcon } from "./management-icon";
+import { ProjectFiles, type ProjectFile } from "./demo-detail-files";
+import type { ProjectAccessState } from "./password-access-manager";
 
 interface DemoDetailResponse {
   csrfToken: string | null;
   project: Omit<DemoSummary, "projectPrefix"> & ProjectAccessState;
-  files: { relativePath: string; size: number; url: string }[];
+  files: ProjectFile[];
 }
 
 type DetailState =
@@ -26,6 +26,9 @@ const linkClass =
 export function DemoDetail({ apiUrl, projectId }: { apiUrl: string; projectId: string }) {
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const [query, setQuery] = useState("");
+  const [homepageNeedsRefresh, setHomepageNeedsRefresh] = useState(false);
+  const [homepageSaving, setHomepageSaving] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -44,7 +47,10 @@ export function DemoDetail({ apiUrl, projectId }: { apiUrl: string; projectId: s
           return;
         }
         const data = (await response.json()) as DemoDetailResponse;
-        if (!controller.signal.aborted) setState({ status: "ready", data });
+        if (!controller.signal.aborted) {
+          setState({ status: "ready", data });
+          setHomepageNeedsRefresh(false);
+        }
       })
       .catch(() => {
         if (!controller.signal.aborted) setState({ status: "error" });
@@ -53,12 +59,14 @@ export function DemoDetail({ apiUrl, projectId }: { apiUrl: string; projectId: s
   }, [apiUrl, projectId, attempt]);
 
   async function reloadHomepage() {
+    setHomepageNeedsRefresh(true);
     const response = await fetch(`${apiUrl}/api/projects/${encodeURIComponent(projectId)}`, {
       credentials: "include",
       cache: "no-store",
     });
     if (!response.ok) throw new Error("homepage_reload_failed");
     setState({ status: "ready", data: (await response.json()) as DemoDetailResponse });
+    setHomepageNeedsRefresh(false);
   }
 
   function reload() {
@@ -77,6 +85,8 @@ export function DemoDetail({ apiUrl, projectId }: { apiUrl: string; projectId: s
     );
   }
 
+  const homepageUrl = state.status === "ready" ? state.data.project.homepage?.url : null;
+
   return (
     <main className="workspace">
       <section className="min-w-0">
@@ -84,20 +94,40 @@ export function DemoDetail({ apiUrl, projectId }: { apiUrl: string; projectId: s
           返回我的 Demo
         </Link>
         <div className="workspace-header mt-4">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 basis-full sm:basis-auto">
             <h1 className="page-title">
-              {state.status === "ready" ? state.data.project.displayName : "项目文件"}
+              {state.status === "ready" ? state.data.project.displayName : "项目详情"}
             </h1>
-            <p className="page-description">查看已发布文件，复制链接即可分享。</p>
           </div>
-          <button
-            className={buttonClass}
-            disabled={state.status === "loading"}
-            onClick={reload}
-            type="button"
-          >
-            重新加载
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className={buttonClass}
+              disabled={state.status === "loading" || homepageSaving}
+              onClick={reload}
+              type="button"
+            >
+              重新加载
+            </button>
+            {state.status === "ready" && (homepageSaving || homepageNeedsRefresh) ? (
+              <button className="button-primary" disabled type="button">
+                访问
+              </button>
+            ) : homepageUrl ? (
+              <a
+                aria-label="访问（在新标签页打开）"
+                className="button-primary"
+                href={homepageUrl}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                访问 <ManagementIcon name="arrow" />
+              </a>
+            ) : state.status === "ready" ? (
+              <a className="button-primary" href="#project-homepage-file">
+                设置首页
+              </a>
+            ) : null}
+          </div>
         </div>
         {state.status === "loading" ? (
           <div aria-label="正在加载项目文件" className="mt-8 space-y-3" role="status">
@@ -143,141 +173,39 @@ export function DemoDetail({ apiUrl, projectId }: { apiUrl: string; projectId: s
           </div>
         ) : null}
         {state.status === "ready" ? (
-          <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <section className="min-w-0">
-              <ProjectFiles data={state.data} />
-            </section>
-            <aside className="min-w-0 space-y-5">
-              <ProjectHomepageManager
-                apiUrl={apiUrl}
-                projectId={projectId}
-                csrfToken={state.data.csrfToken}
-                homepage={state.data.project.homepage}
-                files={state.data.files}
-                onSaved={reloadHomepage}
-              />
-              <PasswordAccessManager
-                access={state.data.project}
-                apiUrl={apiUrl}
-                csrfToken={state.data.csrfToken}
-                onChanged={updateAccess}
-                projectId={projectId}
-              />
-              <ProjectSquareManager key={projectId} apiUrl={apiUrl} projectId={projectId} />
-            </aside>
-          </div>
+          <>
+            <dl className="mb-6 grid grid-cols-2 gap-x-5 gap-y-3  text-sm sm:grid-cols-4">
+              {[
+                ["项目标识", state.data.project.projectId],
+                ["文件数", String(state.data.project.fileCount)],
+                ["总大小", formatBytes(state.data.project.totalSize)],
+                ["更新时间", formatDate(state.data.project.updatedAt)],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt className="text-slate-500">{label}</dt>
+                  <dd className="mt-1 break-all font-medium">{value}</dd>
+                </div>
+              ))}
+            </dl>
+            <DemoDetailSettings
+              apiUrl={apiUrl}
+              csrfToken={state.data.csrfToken}
+              files={state.data.files}
+              onAccessChanged={updateAccess}
+              onHomepageSaved={reloadHomepage}
+              onHomepageSavingChange={setHomepageSaving}
+              project={state.data.project}
+              projectId={projectId}
+            />
+            <ProjectFiles
+              files={state.data.files}
+              access={state.data.project}
+              query={query}
+              onQueryChange={setQuery}
+            />
+          </>
         ) : null}
       </section>
     </main>
   );
-}
-
-function ProjectFiles({ data }: { data: DemoDetailResponse }) {
-  const [query, setQuery] = useState("");
-  const normalizedQuery = query.trim().toLowerCase();
-  const visibleFiles =
-    normalizedQuery.length === 0
-      ? data.files
-      : data.files.filter((file) => file.relativePath.toLowerCase().includes(normalizedQuery));
-
-  return (
-    <>
-      <dl className="mb-6 grid grid-cols-2 gap-x-5 gap-y-3 border-b border-slate-200 pb-5 text-sm sm:grid-cols-4">
-        {[
-          ["项目标识", data.project.projectId],
-          ["文件数", String(data.project.fileCount)],
-          ["总大小", formatBytes(data.project.totalSize)],
-          ["更新时间", formatDate(data.project.updatedAt)],
-        ].map(([label, value]) => (
-          <div key={label}>
-            <dt className="text-slate-500">{label}</dt>
-            <dd className="mt-1 break-all font-medium">{value}</dd>
-          </div>
-        ))}
-      </dl>
-      <section aria-labelledby="project-files-title">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="section-title" id="project-files-title">
-              全部文件（{data.files.length}）
-            </h2>
-            {data.files.length > 0 ? (
-              <p aria-live="polite" className="mt-1 text-xs text-slate-500">
-                显示 {visibleFiles.length} / {data.files.length} 个文件
-              </p>
-            ) : null}
-          </div>
-          {data.files.length > 0 ? (
-            <label className="w-full sm:w-72">
-              <span className="sr-only">搜索文件名</span>
-              <input
-                autoComplete="off"
-                className="field"
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索文件名或目录"
-                type="search"
-                value={query}
-              />
-            </label>
-          ) : null}
-        </div>
-        {data.files.length === 0 ? (
-          <p className="mt-4 rounded-xl bg-slate-50 p-5 text-sm text-slate-600">
-            当前项目暂无已发布文件。
-          </p>
-        ) : visibleFiles.length === 0 ? (
-          <div className="mt-3 rounded-xl bg-slate-50 px-4 py-5 text-sm text-slate-600">
-            <p>没有匹配的文件。</p>
-            <button
-              className="mt-2 min-h-10 md:min-h-9 font-semibold text-blue-700 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
-              onClick={() => setQuery("")}
-              type="button"
-            >
-              清空搜索
-            </button>
-          </div>
-        ) : (
-          <ul className="mt-3 divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
-            {visibleFiles.map((file) => (
-              <li className="min-w-0 px-3 py-2.5" key={file.url}>
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <h3 className="min-w-0 break-all font-mono text-sm font-medium">
-                    {file.relativePath}
-                  </h3>
-                  <span className="shrink-0 text-xs text-slate-500">{formatBytes(file.size)}</span>
-                </div>
-                <div className="mt-1 grid min-w-0 gap-1.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                  <a
-                    className="flex min-h-10 min-w-0 items-center select-text break-all md:block md:min-h-0 font-mono text-xs leading-5 text-slate-600 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-blue-700"
-                    href={file.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {file.url}
-                  </a>
-                  <CopyCodeButton
-                    compact
-                    {...(data.project.accessMode === "password" &&
-                    data.project.passwordStatus !== "available"
-                      ? { disabledReason: "请先重新生成密码" }
-                      : {})}
-                    failureValue={shareText(file.url, data.project)}
-                    label="复制链接"
-                    successMessage="已复制分享信息"
-                    value={shareText(file.url, data.project)}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </>
-  );
-}
-
-function shareText(url: string, access: ProjectAccessState) {
-  return access.accessMode === "password" && access.accessPassword !== undefined
-    ? `链接：${url}\n密码：${access.accessPassword}`
-    : url;
 }

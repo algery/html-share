@@ -112,116 +112,122 @@ export function ProjectSquareManager({ apiUrl, projectId }: { apiUrl: string; pr
   return (
     <section
       aria-labelledby="project-square-title"
-      className="surface scroll-mt-5"
+      className="project-setting-row scroll-mt-5"
       id="project-square"
       ref={sectionRef}
       tabIndex={-1}
     >
-      <h2 className="section-title" id="project-square-title">
-        广场共享
-      </h2>
-      {data !== null ? (
-        <p className="mt-2 text-sm">
-          <span
-            className={`status-badge ${data.settings.enabled ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}
-          >
-            {data.settings.enabled ? "已共享" : "未共享"}
-          </span>
-          <span className="mt-2 block text-xs leading-5 text-slate-500">
-            已保存范围：{audienceSummary(squareDraft(data.settings))}
-          </span>
-        </p>
-      ) : null}
-      <p className="mt-3 text-xs leading-5 text-slate-500">{SQUARE_SCOPE_NOTICE}</p>
-      {loading ? (
-        <p className="mt-3 text-sm text-slate-500" role="status">
-          正在加载共享设置…
-        </p>
-      ) : null}
-      {draft !== null ? (
-        <>
-          <SquareAudiencePicker
-            apiUrl={apiUrl}
-            disabled={submitting || loading}
-            draft={draft}
-            onChange={(value) => {
-              setDraft(value);
-              setNotice("");
-            }}
-          />
-          <p className="mt-3 text-xs leading-5 text-slate-500">
-            当前草稿：{audienceSummary(draft)}。选择只在确认发布或保存范围后生效。
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {data?.settings.enabled ? (
-              <button
-                className="button-primary"
-                disabled={!valid || submitting || loading}
-                onClick={() => void save(true)}
-                type="button"
-              >
-                {submitting ? "正在保存…" : "保存范围"}
-              </button>
-            ) : (
-              <button
-                className="button-primary"
-                disabled={!valid || submitting || loading}
-                onClick={(event) => {
-                  triggerRef.current = event.currentTarget;
-                  setConfirmation(true);
-                }}
-                type="button"
-              >
-                发布到广场
-              </button>
-            )}
-          </div>
-          {data?.settings.enabled ? (
-            <div className="mt-4 border-t border-slate-200 pt-3">
-              <button
-                className="min-h-10 text-sm font-medium text-rose-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
-                disabled={submitting || loading}
-                onClick={() => void save(false)}
-                type="button"
-              >
-                关闭共享
-              </button>
-              <p className="mt-1 text-xs leading-5 text-slate-500">仅从广场撤下，保留上次范围。</p>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-      {error !== null ? (
-        <div className="mt-3 text-sm leading-6 text-rose-700" role="alert">
-          <p>{error.message}</p>
-          {error.login ? (
-            <Link className="inline-flex min-h-10 items-center underline" href="/login">
-              前往登录
-            </Link>
-          ) : null}
-          {error.conflict || data === null ? (
-            <button
-              className="button-secondary mt-2"
-              disabled={loading || submitting}
-              onClick={() => setAttempt((value) => value + 1)}
-              type="button"
+      <div className="min-w-0">
+        <h2 className="section-title" id="project-square-title">
+          广场共享
+        </h2>
+        {data !== null ? (
+          <p className="mt-2 text-sm">
+            <span
+              className={`status-badge ${data.settings.enabled ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}
             >
-              重新加载共享设置
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-      <p aria-live="polite" className="mt-3 text-sm leading-6 text-emerald-700">
-        {notice}
-      </p>
-      {confirmation && draft !== null ? (
-        <ProjectSquareConfirmDialog
-          summary={audienceSummary(draft)}
-          submitting={submitting}
-          onCancel={closeConfirmation}
-          onConfirm={() => void save(true)}
-        />
-      ) : null}
+              {data.settings.enabled ? "已共享" : "未共享"}
+            </span>
+            <span className="mt-2 block text-xs leading-5 text-slate-500">
+              已保存范围：{audienceSummary(squareDraft(data.settings))}
+            </span>
+          </p>
+        ) : null}
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs leading-5 text-slate-500">{SQUARE_SCOPE_NOTICE}</p>
+        {loading ? (
+          <p className="mt-3 text-sm text-slate-500" role="status">
+            正在加载共享设置…
+          </p>
+        ) : null}
+        {draft !== null ? (
+          <>
+            <SquareAudiencePicker
+              apiUrl={apiUrl}
+              disabled={submitting || loading}
+              draft={draft}
+              onChange={(value) => {
+                setDraft(value);
+                setNotice("");
+              }}
+            />
+            <p className="mt-3 text-xs leading-5 text-slate-500">
+              当前草稿：{audienceSummary(draft)}。选择只在确认发布或保存范围后生效。
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {data?.settings.enabled ? (
+                <button
+                  className="button-secondary"
+                  disabled={!valid || submitting || loading}
+                  onClick={() => void save(true)}
+                  type="button"
+                >
+                  {submitting ? "正在保存…" : "保存范围"}
+                </button>
+              ) : (
+                <button
+                  className="button-secondary"
+                  disabled={!valid || submitting || loading}
+                  onClick={(event) => {
+                    triggerRef.current = event.currentTarget;
+                    setConfirmation(true);
+                  }}
+                  type="button"
+                >
+                  发布到广场
+                </button>
+              )}
+            </div>
+            {data?.settings.enabled ? (
+              <div className="mt-4 border-t border-slate-200 pt-3">
+                <button
+                  className="min-h-10 text-sm font-medium text-rose-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+                  disabled={submitting || loading}
+                  onClick={() => void save(false)}
+                  type="button"
+                >
+                  关闭共享
+                </button>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  仅从广场撤下，保留上次范围。
+                </p>
+              </div>
+            ) : null}
+          </>
+        ) : null}
+        {error !== null ? (
+          <div className="mt-3 text-sm leading-6 text-rose-700" role="alert">
+            <p>{error.message}</p>
+            {error.login ? (
+              <Link className="inline-flex min-h-10 items-center underline" href="/login">
+                前往登录
+              </Link>
+            ) : null}
+            {error.conflict || data === null ? (
+              <button
+                className="button-secondary mt-2"
+                disabled={loading || submitting}
+                onClick={() => setAttempt((value) => value + 1)}
+                type="button"
+              >
+                重新加载共享设置
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+        <p aria-live="polite" className="mt-3 text-sm leading-6 text-emerald-700 empty:mt-0">
+          {notice}
+        </p>
+        {confirmation && draft !== null ? (
+          <ProjectSquareConfirmDialog
+            summary={audienceSummary(draft)}
+            submitting={submitting}
+            onCancel={closeConfirmation}
+            onConfirm={() => void save(true)}
+          />
+        ) : null}
+      </div>
     </section>
   );
 }
