@@ -70,17 +70,14 @@ export function ManagementShell({ apiUrl, children }: ManagementShellProps) {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex min-h-14 w-full max-w-[1280px] flex-wrap items-center gap-x-7 gap-y-1 px-4 py-2 sm:px-6">
+        <div className="mx-auto flex min-h-14 w-full max-w-[1280px] flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 sm:gap-x-7 sm:px-6">
           <Link
             className="flex min-h-10 shrink-0 items-center gap-2.5 text-base font-semibold tracking-tight"
             href="/demos"
           >
             <Brand />
           </Link>
-          <nav
-            aria-label="管理导航"
-            className="order-last flex min-h-10 w-full items-center gap-1 sm:order-none sm:w-auto"
-          >
+          <nav aria-label="管理导航" className="flex min-h-10 items-center gap-1">
             <NavigationLink
               active={pathname === "/demos" || pathname.startsWith("/demos/")}
               href="/demos"
@@ -93,16 +90,24 @@ export function ManagementShell({ apiUrl, children }: ManagementShellProps) {
             >
               项目广场
             </NavigationLink>
+          </nav>
+          <div
+            aria-label="账号操作"
+            className="ml-auto flex min-h-10 min-w-0 basis-full items-center justify-end gap-2 text-xs sm:basis-auto sm:gap-3"
+            role="group"
+          >
+            <span
+              aria-live="polite"
+              className="max-w-32 truncate text-slate-600 sm:max-w-48"
+              title={user?.displayName}
+            >
+              {status === "ready" ? user?.displayName : "正在验证身份…"}
+            </span>
             <NavigationLink active={pathname === "/tokens"} href="/tokens">
               我的 Token
             </NavigationLink>
-          </nav>
-          <div className="ml-auto flex min-h-10 items-center gap-3 text-xs">
-            <span aria-live="polite" className="max-w-32 truncate text-slate-600 sm:max-w-48">
-              {status === "ready" ? user?.displayName : "正在验证身份…"}
-            </span>
             <button
-              className="min-h-10 min-w-10 px-1 font-medium text-slate-600 hover:text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
+              className="min-h-10 min-w-10 shrink-0 px-1 font-medium text-slate-600 hover:text-slate-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
               onClick={() => void logout()}
               type="button"
             >
@@ -128,7 +133,7 @@ function NavigationLink({
   return (
     <Link
       aria-current={active ? "page" : undefined}
-      className={`inline-flex min-h-10 items-center rounded-md px-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 ${
+      className={`inline-flex min-h-10 shrink-0 items-center rounded-md font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 px-2 text-xs sm:px-3 sm:text-sm ${
         active
           ? "bg-blue-50 text-blue-700"
           : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"

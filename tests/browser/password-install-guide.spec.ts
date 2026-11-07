@@ -42,7 +42,13 @@ async function openGuide(page: Page, clipboardFails = false) {
   }, clipboardFails);
   await page.goto(`${webUrl}/tokens`);
   await expect(page.getByRole("heading", { name: "我的 Token", exact: true })).toBeVisible();
-  await expect(page.getByText("安装验收用户")).toBeVisible();
+  const account = page.getByRole("group", { name: "账号操作" });
+  await expect(account.getByText("安装验收用户")).toBeVisible();
+  await expect(account.getByRole("link", { name: "我的 Token" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(account.getByRole("button", { name: "退出" })).toBeVisible();
   await page.getByRole("button", { name: "查看 Codex / Claude Code 配置" }).click();
   await expect(page.getByRole("tabpanel")).toBeVisible();
   return unexpectedRequests;
