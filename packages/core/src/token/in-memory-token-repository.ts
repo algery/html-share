@@ -13,7 +13,7 @@ export class InMemoryMcpTokenRepository implements McpTokenRepository {
     name: string;
     tokenDigest: string;
     tokenSuffix: string;
-    expiresAt: Date;
+    expiresAt: Date | null;
     createdAt: Date;
   }) {
     const token: StoredToken = {
@@ -56,7 +56,7 @@ export class InMemoryMcpTokenRepository implements McpTokenRepository {
     if (
       token === undefined ||
       token.status !== "active" ||
-      token.expiresAt <= input.now ||
+      (token.expiresAt !== null && token.expiresAt <= input.now) ||
       token.revokedAt !== null
     ) {
       return null;

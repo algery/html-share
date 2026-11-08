@@ -20,15 +20,14 @@ export function TokenCreatedPanel({
       <p className="mt-2 text-sm leading-6 text-amber-900">
         完整值仅展示一次，关闭或刷新页面后无法再次查看。
       </p>
-      {expiresAt === null ? null : (
-        <p className="mt-1 text-xs leading-5 text-amber-900">
-          到期时间：
-          {new Intl.DateTimeFormat("zh-CN", {
-            dateStyle: "medium",
-            timeStyle: "short",
-          }).format(new Date(expiresAt))}
-        </p>
-      )}
+      <p className="mt-1 text-xs leading-5 text-amber-900">
+        {expiresAt === null
+          ? "永久有效"
+          : `到期时间：${new Intl.DateTimeFormat("zh-CN", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            }).format(new Date(expiresAt))}`}
+      </p>
       <code className="mt-4 block min-w-0 break-all rounded-md border border-amber-200 bg-white p-3 font-mono text-sm leading-6 text-slate-900">
         {value}
       </code>

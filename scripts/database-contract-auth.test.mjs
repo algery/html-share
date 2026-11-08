@@ -126,4 +126,38 @@ databaseContract("identity, single-use state and token authorization", (current)
       (await f.repositories.mcpTokens.listTokens({ userId: f.owner.id }))[0].lastUsedAt,
     ).toEqual(f.now);
   });
+
+  it("authenticates a permanent Token after 30 days only while owner and tenant are active", async () => {
+    const f = current();
+    const tokenDigest = randomUUID();
+    const token = await f.repositories.mcpTokens.createToken({
+      user: f.owner,
+      name: "永久有效",
+      tokenDigest,
+      tokenSuffix: "abcd",
+      createdAt: f.now,
+      expiresAt: null,
+    });
+    expect(token.expiresAt).toBeNull();
+    expect(await f.repositories.mcpTokens.listTokens({ userId: f.owner.id })).toEqual([token]);
+    const input = { tokenDigest, now: new Date(f.now.getTime() + 31 * 86_400_000) };
+    expect(await f.repositories.mcpTokens.findActiveToken(input)).toMatchObject({
+      id: token.id,
+      expiresAt: null,
+    });
+    await f.db.user.update({ where: { id: f.owner.id }, data: { status: "DISABLED" } });
+    expect(await f.repositories.mcpTokens.findActiveToken(input)).toBeNull();
+    await f.db.user.update({ where: { id: f.owner.id }, data: { status: "ACTIVE" } });
+    await f.db.tenant.update({ where: { id: f.tenant.id }, data: { status: "DISABLED" } });
+    expect(await f.repositories.mcpTokens.findActiveToken(input)).toBeNull();
+    await f.db.tenant.update({ where: { id: f.tenant.id }, data: { status: "ACTIVE" } });
+    expect(
+      await f.repositories.mcpTokens.revokeToken({
+        tokenId: token.id,
+        userId: f.owner.id,
+        revokedAt: input.now,
+      }),
+    ).toBe(true);
+    expect(await f.repositories.mcpTokens.findActiveToken(input)).toBeNull();
+  });
 });

@@ -13,8 +13,8 @@ interface TokenManagerProps {
 export function TokenManager({ apiUrl }: TokenManagerProps) {
   const [tokens, setTokens] = useState<TokenSummary[]>([]);
   const [name, setName] = useState("");
-  const [createdValue, setCreatedValue] = useState<string | null>(null);
-  const [createdExpiresAt, setCreatedExpiresAt] = useState<string | null>(null);
+  const [validity, setValidity] = useState("30");
+  const [created, setCreated] = useState<{ value: string; expiresAt: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -39,16 +39,19 @@ export function TokenManager({ apiUrl }: TokenManagerProps) {
     try {
       const csrfToken = await requestCsrfToken(apiUrl);
       const response = await fetch(endpoint, {
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({
+          name,
+          expiresInDays: validity === "never" ? "never" : Number(validity),
+        }),
         credentials: "include",
         headers: { "content-type": "application/json", "x-html-share-csrf": csrfToken },
         method: "POST",
       });
       if (!response.ok) throw new Error(await readError(response));
       const body = (await response.json()) as { token: TokenSummary; value: string };
-      setCreatedValue(body.value);
-      setCreatedExpiresAt(body.token.expiresAt);
+      setCreated({ value: body.value, expiresAt: body.token.expiresAt });
       setName("");
+      setValidity("30");
       setTokens((current) => [body.token, ...current]);
     } catch (reason) {
       setError(toMessage(reason));
@@ -86,19 +89,16 @@ export function TokenManager({ apiUrl }: TokenManagerProps) {
         <div className="min-w-0">
           <h1 className="page-title">我的 Token</h1>
           <p className="page-description mt-2">
-            用于连接 Codex / Claude Code，有效期 30 天，完整值仅创建时展示一次。
+            用于连接 Codex / Claude Code，完整值仅创建时展示一次。
           </p>
         </div>
       </header>
 
-      {createdValue !== null ? (
+      {created !== null ? (
         <TokenCreatedPanel
-          expiresAt={createdExpiresAt}
-          value={createdValue}
-          onDismiss={() => {
-            setCreatedValue(null);
-            setCreatedExpiresAt(null);
-          }}
+          expiresAt={created.expiresAt}
+          value={created.value}
+          onDismiss={() => setCreated(null)}
         />
       ) : null}
 
@@ -107,31 +107,54 @@ export function TokenManager({ apiUrl }: TokenManagerProps) {
           创建 Token
         </h2>
         <form
-          className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
+          className="mt-4"
           onSubmit={(event) => {
             event.preventDefault();
             void createToken();
           }}
         >
-          <label className="min-w-0 flex-1 text-sm font-medium text-slate-800">
-            Token 名称
-            <input
-              className="field mt-2 w-full"
-              disabled={isSubmitting}
-              maxLength={40}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="例如：我的 Codex"
-              required
-              value={name}
-            />
-          </label>
-          <button
-            className="button-primary shrink-0"
-            disabled={isSubmitting || name.trim().length === 0}
-            type="submit"
-          >
-            {isSubmitting ? "正在创建…" : "创建 Token"}
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="min-w-0 flex-1 text-sm font-medium text-slate-800">
+              Token 名称
+              <input
+                className="field mt-2 w-full"
+                disabled={isSubmitting}
+                maxLength={40}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="例如：我的 Codex"
+                required
+                value={name}
+              />
+            </label>
+            <label className="min-w-0 text-sm font-medium text-slate-800">
+              有效期
+              <select
+                aria-describedby={validity === "never" ? `${guideId}-validity` : undefined}
+                className="field mt-2 w-full sm:min-w-32"
+                disabled={isSubmitting}
+                onChange={(event) => setValidity(event.target.value)}
+                value={validity}
+              >
+                <option value="1">1 天</option>
+                <option value="7">7 天</option>
+                <option value="15">15 天</option>
+                <option value="30">30 天</option>
+                <option value="never">永久有效</option>
+              </select>
+            </label>
+            <button
+              className="button-primary shrink-0"
+              disabled={isSubmitting || name.trim().length === 0}
+              type="submit"
+            >
+              {isSubmitting ? "正在创建…" : "创建 Token"}
+            </button>
+          </div>
+          {validity === "never" ? (
+            <p className="mt-2 text-sm text-amber-800" id={`${guideId}-validity`}>
+              此 Token 不会自动过期，泄露后请立即吊销。
+            </p>
+          ) : null}
         </form>
         {tokens.some((token) => token.name.trim() === name.trim()) && name.trim().length > 0 ? (
           <p className="mt-2 text-sm text-amber-800">

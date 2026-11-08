@@ -4,7 +4,7 @@ export interface TokenSummary {
   status: "active" | "revoked";
   tokenSuffix: string;
   createdAt: string;
-  expiresAt: string;
+  expiresAt: string | null;
   lastUsedAt: string | null;
   revokedAt: string | null;
 }
@@ -44,13 +44,13 @@ export function TokenList({ tokens, onRevoke }: TokenListProps) {
                   ••••{token.tokenSuffix}
                 </td>
                 <td className="px-4 py-3">
-                  <TokenStatus status={token.status} />
+                  <TokenStatus token={token} />
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-slate-600">
                   <TokenDate value={token.createdAt} />
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-slate-600">
-                  <TokenDate value={token.expiresAt} />
+                  <TokenExpiry token={token} />
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-xs tabular-nums text-slate-600">
                   {token.lastUsedAt === null ? "尚未使用" : <TokenDate value={token.lastUsedAt} />}
@@ -68,7 +68,7 @@ export function TokenList({ tokens, onRevoke }: TokenListProps) {
           <article className="surface min-w-0" key={token.id}>
             <div className="flex items-start justify-between gap-3">
               <h3 className="min-w-0 break-all text-sm font-semibold leading-6">{token.name}</h3>
-              <TokenStatus status={token.status} />
+              <TokenStatus token={token} />
             </div>
             <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-xs leading-5">
               <dt className="text-slate-500">末尾字符</dt>
@@ -79,7 +79,7 @@ export function TokenList({ tokens, onRevoke }: TokenListProps) {
               </dd>
               <dt className="text-slate-500">到期</dt>
               <dd className="tabular-nums">
-                <TokenDate value={token.expiresAt} />
+                <TokenExpiry token={token} />
               </dd>
               <dt className="text-slate-500">最近使用</dt>
               <dd className="tabular-nums">
@@ -98,12 +98,14 @@ export function TokenList({ tokens, onRevoke }: TokenListProps) {
   );
 }
 
-function TokenStatus({ status }: { status: TokenSummary["status"] }) {
+function TokenStatus({ token }: { token: TokenSummary }) {
+  const expired = token.expiresAt !== null && Date.parse(token.expiresAt) <= Date.now();
+  const available = token.status === "active" && !expired;
   return (
     <span
-      className={`status-badge shrink-0 ${status === "active" ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}
+      className={`status-badge shrink-0 ${available ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}
     >
-      {status === "active" ? "可用" : "已吊销"}
+      {token.status === "revoked" ? "已吊销" : expired ? "已过期" : "可用"}
     </span>
   );
 }
@@ -125,6 +127,11 @@ function RevokeButton({
       吊销
     </button>
   );
+}
+
+function TokenExpiry({ token }: { token: TokenSummary }) {
+  if (token.expiresAt !== null) return <TokenDate value={token.expiresAt} />;
+  return token.status === "revoked" ? "—" : "永久有效";
 }
 
 function TokenDate({ value }: { value: string }) {

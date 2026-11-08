@@ -29,19 +29,28 @@ export function registerTokenRoutes(app: FastifyInstance, options: TokenRouteOpt
     if (!isTrustedWriteRequest(request, reply, options)) return;
     const session = await requireAppSession(request, reply, options);
     if (session === null) return;
-    const name = readString(request.body, "name");
-    if (name === undefined) {
+    const name = readField(request.body, "name");
+    if (typeof name !== "string") {
       return reply.code(400).send({ error: "invalid_token_name" });
     }
     try {
-      const created = await options.tokens.createToken({ name, user: session.user });
+      const created = await options.tokens.createToken({
+        name,
+        expiresInDays: readField(request.body, "expiresInDays"),
+        user: session.user,
+      });
       reply.header("cache-control", "no-store");
       return reply
         .code(201)
         .send({ token: toTokenResponse(created.summary), value: created.token });
     } catch (error) {
       if (error instanceof McpTokenError) {
-        return reply.code(400).send({ error: "invalid_token_name" });
+        return reply.code(400).send({
+          error:
+            error.code === "TOKEN_VALIDITY_INVALID"
+              ? "invalid_token_validity"
+              : "invalid_token_name",
+        });
       }
       throw error;
     }
@@ -78,10 +87,9 @@ async function requireAppSession(
   return session;
 }
 
-function readString(body: unknown, key: string) {
+function readField(body: unknown, key: string) {
   if (typeof body !== "object" || body === null) return undefined;
-  const value = (body as Record<string, unknown>)[key];
-  return typeof value === "string" ? value : undefined;
+  return (body as Record<string, unknown>)[key];
 }
 
 function readPathParameter(request: FastifyRequest, key: string) {
