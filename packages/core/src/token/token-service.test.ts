@@ -27,8 +27,8 @@ describe("MCP token service", () => {
       status: "active",
       tokenSuffix: created.token.slice(-6),
     });
-    expect(created.summary.expiresAt.getTime() - created.summary.createdAt.getTime()).toBe(
-      30 * 24 * 60 * 60 * 1000,
+    expect(created.summary.expiresAt?.getTime()).toBe(
+      created.summary.createdAt.getTime() + 30 * 24 * 60 * 60 * 1000,
     );
     expect(JSON.stringify(listed)).not.toContain(created.token);
     expect(listed).toEqual([created.summary]);

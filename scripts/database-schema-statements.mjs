@@ -24,7 +24,7 @@ export function unsupportedMysqlStatements(sql) {
     } else if (verb === "create" && (kind === "index" || (kind === "unique" && name === "index"))) {
       // The exact index set is checked against the models separately.
     } else if (verb === "alter" && kind === "table") {
-      // Only the additive forms parsed by unsupportedMysqlAlterations are allowed.
+      // Only forms modeled by unsupportedMysqlAlterations are allowed.
     } else if (verb === "insert" && kind === "into" && name === "database_identity") {
       // Exact singleton initialization is checked separately.
     } else issues.push(`Unsupported MySQL statement: ${verb}`);
@@ -107,7 +107,9 @@ export function unsupportedPostgresIdentityTail(sql) {
         "191",
         ")",
       ]);
-    if (!create && !insert && !squareCreate && !squareIndex && !unionColumn)
+    const tokenExpiry =
+      statement.join(" ") === "alter table mcp_tokens alter column expires_at drop not null";
+    if (!create && !insert && !squareCreate && !squareIndex && !unionColumn && !tokenExpiry)
       issues.push("Unsupported statement after PostgreSQL identity migration");
   }
   return issues;

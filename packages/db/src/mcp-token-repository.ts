@@ -48,7 +48,7 @@ export function createMcpTokenRepository(prisma: PrismaClient): McpTokenReposito
       const token = await prisma.mcpToken.findFirst({
         include: { user: true },
         where: {
-          expiresAt: { gt: input.now },
+          OR: [{ expiresAt: null }, { expiresAt: { gt: input.now } }],
           revokedAt: null,
           status: McpTokenStatus.ACTIVE,
           tokenDigest: input.tokenDigest,
@@ -69,7 +69,7 @@ export function createMcpTokenRepository(prisma: PrismaClient): McpTokenReposito
 
 function toSummary(token: {
   createdAt: Date;
-  expiresAt: Date;
+  expiresAt: Date | null;
   id: string;
   lastUsedAt: Date | null;
   name: string;
@@ -91,7 +91,7 @@ function toSummary(token: {
 
 function toAuthenticatedToken(token: {
   createdAt: Date;
-  expiresAt: Date;
+  expiresAt: Date | null;
   id: string;
   lastUsedAt: Date | null;
   name: string;

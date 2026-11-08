@@ -11,6 +11,7 @@ import {
   foreignKeys,
   foreignKeySignature,
   unsupportedMysqlAlterations,
+  mysqlTokenExpiryAlter,
 } from "./database-schema-constraints.mjs";
 import { compareDefault, compareIdentityInitialization } from "./database-schema-defaults.mjs";
 import { compareChecks } from "./database-schema-checks.mjs";
@@ -86,6 +87,9 @@ export function parseMysqlTables(sql) {
   }
   for (const match of sql.matchAll(/ALTER TABLE `(\w+)` ADD COLUMN `(\w+)` ([^;]+);/g)) {
     tables.get(match[1])?.fields.set(match[2], match[3]);
+  }
+  if (sql.includes(mysqlTokenExpiryAlter)) {
+    tables.get("mcp_tokens")?.fields.set("expires_at", "DATETIME(3) NULL");
   }
   collectMysqlKeys(sql, tables);
   return tables;

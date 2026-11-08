@@ -3,11 +3,11 @@ import { createHmac, randomBytes } from "node:crypto";
 import type { PlatformUserIdentity } from "../auth/contracts.js";
 import type { AuthenticatedMcpToken, McpTokenRepository, McpTokenSummary } from "./contracts.js";
 
-const MCP_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const TOKEN_NAME_MAX_LENGTH = 40;
 
 export class McpTokenError extends Error {
-  constructor(readonly code: "TOKEN_NAME_INVALID") {
+  constructor(readonly code: "TOKEN_NAME_INVALID" | "TOKEN_VALIDITY_INVALID") {
     super(code);
     this.name = "McpTokenError";
   }
@@ -23,11 +23,15 @@ export function createMcpTokenService(options: McpTokenServiceOptions) {
   const now = options.now ?? (() => new Date());
 
   return {
-    async createToken(input: { user: PlatformUserIdentity; name: string }) {
+    async createToken(input: {
+      user: PlatformUserIdentity;
+      name: string;
+      expiresInDays?: unknown;
+    }) {
       const name = normalizeTokenName(input.name);
       const createdAt = now();
+      const expiresAt = resolveExpiration(createdAt, input.expiresInDays);
       const token = `hsp_${randomBytes(32).toString("base64url")}`;
-      const expiresAt = new Date(createdAt.getTime() + MCP_TOKEN_TTL_MS);
       const summary = await options.repository.createToken({
         createdAt,
         expiresAt,
@@ -68,7 +72,7 @@ export type McpTokenService = ReturnType<typeof createMcpTokenService>;
 export function toTokenResponse(token: McpTokenSummary) {
   return {
     createdAt: token.createdAt.toISOString(),
-    expiresAt: token.expiresAt.toISOString(),
+    expiresAt: token.expiresAt?.toISOString() ?? null,
     id: token.id,
     lastUsedAt: token.lastUsedAt?.toISOString() ?? null,
     name: token.name,
@@ -76,6 +80,14 @@ export function toTokenResponse(token: McpTokenSummary) {
     status: token.status,
     tokenSuffix: token.tokenSuffix,
   };
+}
+
+function resolveExpiration(createdAt: Date, expiresInDays: unknown = 30) {
+  if (expiresInDays === "never") return null;
+  if (expiresInDays !== 1 && expiresInDays !== 7 && expiresInDays !== 15 && expiresInDays !== 30) {
+    throw new McpTokenError("TOKEN_VALIDITY_INVALID");
+  }
+  return new Date(createdAt.getTime() + expiresInDays * DAY_MS);
 }
 
 function normalizeTokenName(value: string) {

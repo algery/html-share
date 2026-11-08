@@ -37,7 +37,9 @@ describe("MySQL token digest index lookup", () => {
         where: {
           id: "record",
           tokenDigest: "matching",
-          expiresAt: { gt: now },
+          ...(kind === "session"
+            ? { expiresAt: { gt: now } }
+            : { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }),
           revokedAt: null,
           user: { status: "ACTIVE", tenant: { status: "ACTIVE" } },
         },

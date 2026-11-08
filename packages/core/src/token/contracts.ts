@@ -8,7 +8,7 @@ export interface McpTokenSummary {
   status: McpTokenStatus;
   tokenSuffix: string;
   createdAt: Date;
-  expiresAt: Date;
+  expiresAt: Date | null;
   lastUsedAt: Date | null;
   revokedAt: Date | null;
 }
@@ -23,7 +23,7 @@ export interface McpTokenRepository {
     name: string;
     tokenDigest: string;
     tokenSuffix: string;
-    expiresAt: Date;
+    expiresAt: Date | null;
     createdAt: Date;
   }): Promise<McpTokenSummary>;
   listTokens(input: { userId: string }): Promise<McpTokenSummary[]>;

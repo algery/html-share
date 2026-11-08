@@ -24,7 +24,8 @@ export function createHtmlShareMcpServer(input: {
     },
     async () => {
       const result = {
-        expiresAt: input.token.expiresAt.toISOString(),
+        expiresAt: input.token.expiresAt?.toISOString() ?? null,
+        ...(input.token.expiresAt === null ? { validity: "永久有效" } : {}),
         user: input.token.user.displayName,
       };
       return {

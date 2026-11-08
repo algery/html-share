@@ -57,7 +57,7 @@ export function createMysqlMcpTokenRepository(prisma: MysqlClient): McpTokenRepo
         include: { user: true },
         where: {
           id: identity.id,
-          expiresAt: { gt: input.now },
+          OR: [{ expiresAt: null }, { expiresAt: { gt: input.now } }],
           revokedAt: null,
           status: McpTokenStatus.ACTIVE,
           tokenDigest: input.tokenDigest,
@@ -78,7 +78,7 @@ export function createMysqlMcpTokenRepository(prisma: MysqlClient): McpTokenRepo
 
 function toSummary(token: {
   createdAt: Date;
-  expiresAt: Date;
+  expiresAt: Date | null;
   id: string;
   lastUsedAt: Date | null;
   name: string;
@@ -100,7 +100,7 @@ function toSummary(token: {
 
 function toAuthenticatedToken(token: {
   createdAt: Date;
-  expiresAt: Date;
+  expiresAt: Date | null;
   id: string;
   lastUsedAt: Date | null;
   name: string;

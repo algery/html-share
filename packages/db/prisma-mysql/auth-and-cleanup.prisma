@@ -5,7 +5,7 @@ model McpToken {
   tokenDigest     String         @map("token_digest") @db.LongText
   tokenSuffix     String         @map("token_suffix") @db.LongText
   status          McpTokenStatus @default(ACTIVE)
-  expiresAt       DateTime       @map("expires_at") @db.DateTime(3)
+  expiresAt       DateTime?      @map("expires_at") @db.DateTime(3)
   lastUsedAt      DateTime?      @map("last_used_at") @db.DateTime(3)
   revokedAt       DateTime?      @map("revoked_at") @db.DateTime(3)
   createdAt       DateTime       @default(now()) @map("created_at") @db.DateTime(3)
