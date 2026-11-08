@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@html-share/config": "workspace:*",
-    "next": "16.3.3",
+    "next": "16.4.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -25,7 +25,7 @@
     "@tailwindcss/postcss": "4.3.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
-    "eslint-config-next": "16.3.3",
+    "eslint-config-next": "16.4.1",
     "postcss": "8.5.6",
     "tailwindcss": "4.3.0"
   }
