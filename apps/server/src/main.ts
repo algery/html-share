@@ -150,6 +150,7 @@ const app = buildServerApp({
             appId: environment.feishu.FEISHU_APP_ID,
             appSecret: environment.feishu.FEISHU_APP_SECRET,
             tenantKey: environment.feishu.FEISHU_TENANT_KEY,
+            tokenApiVersion: environment.feishu.FEISHU_TOKEN_API_VERSION,
           }),
           stateSecret: environment.server.AUTH_STATE_SECRET,
         },

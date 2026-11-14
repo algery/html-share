@@ -8,12 +8,13 @@ const callbackUrl = "https://app.example.test/auth/feishu/callback";
 const tokenPayload = { code: 0, access_token: "private-user-token", token_type: "Bearer" };
 const userData = { open_id: "ou-member", tenant_key: "tenant-allowed", name: "飞书成员" };
 const json = (value: unknown) => new Response(JSON.stringify(value));
-const client = (fetcher: typeof fetch) =>
+const client = (fetcher: typeof fetch, tokenApiVersion?: "v2" | "v3") =>
   createFeishuClient({
     appId: "cli-example",
     appSecret: "private-app-secret",
     tenantKey: "tenant-allowed",
     fetcher,
+    ...(tokenApiVersion === undefined ? {} : { tokenApiVersion }),
   });
 
 describe("Feishu OAuth client", () => {
@@ -95,6 +96,47 @@ describe("Feishu OAuth client", () => {
     ]);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
+
+  it("uses the explicit v2 endpoint with the same PKCE and redirect parameters", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(json(tokenPayload))
+      .mockResolvedValueOnce(json({ code: 0, data: userData }));
+    await expect(
+      client(fetcher, "v2").exchangeAuthorizationCode({
+        code: "one-use-code",
+        callbackUrl,
+        codeVerifier: "pkce-verifier",
+      }),
+    ).resolves.toMatchObject({ feishuTenantKey: "tenant-allowed" });
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://open.feishu.cn/open-apis/authen/v2/oauth/token",
+    );
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toMatchObject({
+      code_verifier: "pkce-verifier",
+      redirect_uri: callbackUrl,
+    });
+  });
+
+  it.each(["v2", "v3"] as const)(
+    "does not retry or change endpoints after a %s PKCE rejection",
+    async (version) => {
+      const fetcher = vi.fn().mockResolvedValue(json({ code: 20049 }));
+      await expect(
+        client(fetcher, version).exchangeAuthorizationCode({
+          code: "one-use-code",
+          callbackUrl,
+          codeVerifier: "pkce-verifier",
+        }),
+      ).rejects.toMatchObject({ code: "AUTHORIZATION_DENIED" });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(fetcher.mock.calls[0]?.[0]).toBe(
+        version === "v2"
+          ? "https://open.feishu.cn/open-apis/authen/v2/oauth/token"
+          : "https://accounts.feishu.cn/oauth/v3/token",
+      );
+    },
+  );
 
   it("keeps contact-free login available and never substitutes enterprise_email", async () => {
     const fetcher = vi

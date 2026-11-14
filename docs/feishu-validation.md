@@ -12,7 +12,7 @@ Node.js 24.22.3、pnpm 11.19.0；按仓库锁文件安装 Next.js 16.4.1 / React
 | 双库完整契约              | `node scripts/database-contract-check.mjs` + 两个 `PHASE25_*_URL`                   | 15 文件、116 项通过，零跳过                                                                  |
 | 存量升级、重复 deploy/SQL | `vitest run scripts/feishu-migration.test.mjs` + 两个空的 `PHASE39_*_MIGRATION_URL` | 2 项通过，零跳过；User/Tenant、Demo、Revision、Upload、Token、配额快照保留                   |
 | 新授权路由                | `vitest run apps/server/src/feishu-auth.test.ts`                                    | 17 项通过：匹配、双域、PKCE、取消、重放、浏览器/来源隔离、故障、长中文路径、限流 Cookie 清理 |
-| 既有界面回归 | `node scripts/feishu-regression-smoke.mjs` | Chromium/WebKit 154 项通过，API 全部拦截，不写业务库 |
+| 既有界面回归              | `node scripts/feishu-regression-smoke.mjs`                                          | Chromium/WebKit 154 项通过，API 全部拦截，不写业务库                                         |
 | 真实本地浏览器链路        | `node scripts/feishu-browser-smoke.mjs`                                             | 两库 × Chromium/WebKit × 1440/375px，99 断言通过                                             |
 | 结构一致性                | `node scripts/database-schema-check.mjs`                                            | 22 models / 13 enums，一致性通过；迁移 fingerprint 经独立 SQL 审查及真实迁移验证后更新       |
 | 类型与构建                | `pnpm typecheck`、`pnpm build`                                                      | packages、Server、Worker、Web 通过                                                           |
@@ -40,3 +40,15 @@ fresh code-reviewer 对最终暂存版本执行两阶段审查，Stage 1 / Stage
 真实飞书 App ID/Secret、允许 tenant_key、权限审批、组织成员可用范围、管理域和内容域回调，以及飞书客户端真机登录需要部署方完成。手机号和邮箱可能由管理员导入，用户已选择信任本组织维护数据自动匹配；本次没有验证其实际持有权，也未声称已完成真实飞书联调。
 
 部署先运行对应数据库增量迁移，再更新服务。详见 [配置与账户规则](feishu-login.md)。本次只推 GitHub main，不同步 GitLab，不执行生产部署。
+
+## 2026-11-14 真实本地联调与 PKCE 兼容修复
+
+- 在已有本地 MySQL 环境备份数据库和对象存储后执行迁移，保留原数据库、对象存储和加密密钥。升级前后旧用户、项目、Token、版本记录数量一致。
+- 真实浏览器到达飞书授权页，由用户确认手机号和邮箱权限。应用凭据校验成功；v3 换码返回 HTTP 400 / 20049。临时诊断仅记录校验值长度和挑战值一致性布尔值，证明发送的 43 字符 verifier 与 S256 challenge 一致。
+- 独立新授权对照：v2 发送错误 verifier 返回 20049，不创建本地会话；v2 正确 verifier 登录成功，回到 `/demos`。未关闭 PKCE，未在失败后复用授权码。
+- 新增服务端 `FEISHU_TOKEN_API_VERSION` 固定枚举，默认 v3；受影响的本地环境显式配置 v2。四套 Compose/环境模板均透传，不接受自定义端点。非法版本即使在飞书关闭时也拒绝启动。v2 已弃用，后续上游修复需重新实测 v3 再切回。
+- 本次真实飞书身份收到有效手机号，邮箱为空。建立独立用户，未命中原钉钉身份；原项目及 4 个 Token 保留在原账户。此结果仅证明真实登录与资料获取，未将其表述为真实跨平台关联验收。
+- 临时诊断只用于本地定位，不进入代码提交或最终镜像；真实凭据、手机号、租户标识及 Token 不写入本记录。
+
+最终兼容修复验证：97 项相关回归测试通过；typecheck、lint 通过；独立 code-reviewer 从 Stage 1 重验后 Stage 1/2 均 PASS，无未解决 HIGH/MEDIUM。
+最终本地镜像重建、迁移及三个服务健康检查通过；临时诊断已移除，使用正式配置再次完成真实飞书授权并进入管理端。四套 Compose 版本变量解析通过，暂存区 628 文件凭据扫描通过。

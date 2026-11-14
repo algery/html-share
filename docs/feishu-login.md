@@ -11,6 +11,7 @@ FEISHU_ENABLED=true
 FEISHU_APP_ID=cli_your_app_id
 FEISHU_APP_SECRET=replace-with-feishu-app-secret
 FEISHU_TENANT_KEY=your_allowed_tenant_key
+FEISHU_TOKEN_API_VERSION=v3
 ```
 
 以上字段不使用 NEXT_PUBLIC 前缀。沿用当前 `DINGTALK_APP_ID` 对应的平台组织：启用飞书表示管理员明确认定此飞书租户和钉钉应用属于同一组织。回调严格核验 `tenant_key`，不能开放任意租户。勿修改已有 DINGTALK_APP_ID 来启用飞书，否则会选择另一个平台组织。
@@ -25,6 +26,12 @@ FEISHU_TENANT_KEY=your_allowed_tenant_key
 申请 `contact:user.phone:readonly` 和 `contact:user.email:readonly` 权限，按飞书审批与用户授权取得 mobile/email。缺失联系方式仍可创建独立平台账户，但不能推断为同一用户。不请求离线访问、不保存上游 access_token；仅使用 `email`，不回退 `enterprise_email`。
 
 使用官方 authorize、Token v3 和 user_info 接口，启用 PKCE S256。state 绑定浏览器、来源和管理/内容 audience；先原子消费再换码。Cookie 为 HttpOnly、SameSite=Lax、Host-only，正式环境 Secure。平台会话仍为 8 小时，双域之间复用既有一次性会话接力。
+
+### v3 PKCE 兼容问题
+
+`FEISHU_TOKEN_API_VERSION` 默认 `v3`，只接受 `v2` 或 `v3`。2026-11-14 本地真实飞书联调中，已确认挑战值与验证值一致，但 v3 换码仍返回 HTTP 400 / `20049`；[飞书 SDK 仓库的同类报告](https://github.com/larksuite/oapi-sdk-go/issues/230)尚未解决。
+
+受影响的部署可显式设置 `FEISHU_TOKEN_API_VERSION=v2`，使用官方 `https://open.feishu.cn/open-apis/authen/v2/oauth/token`。该接口已标为弃用，仅作为受影响环境的兼容选项；默认仍为 v3。实测 v2 正确 PKCE 登录成功、错误验证值返回 20049。两个版本都保留 PKCE S256、同浏览器 state、精确 redirect_uri、租户限制和既有账户关联校验；不会在错误后自动切换版本或复用授权码。修改后重建 Server 容器加载配置，待上游修复后以全新授权验证 v3 再切回。
 
 ## 账户关联规则
 

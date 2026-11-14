@@ -1,7 +1,10 @@
 import { normalizeAccountContacts, type FeishuIdentity } from "@html-share/core";
 
 const AUTHORIZATION_URL = "https://accounts.feishu.cn/open-apis/authen/v1/authorize";
-const TOKEN_URL = "https://accounts.feishu.cn/oauth/v3/token";
+const TOKEN_URLS = {
+  v2: "https://open.feishu.cn/open-apis/authen/v2/oauth/token",
+  v3: "https://accounts.feishu.cn/oauth/v3/token",
+} as const;
 const USER_INFO_URL = "https://open.feishu.cn/open-apis/authen/v1/user_info";
 const CONTACT_SCOPE = "contact:user.phone:readonly contact:user.email:readonly";
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -41,6 +44,7 @@ export function createFeishuClient(options: {
   appId: string;
   appSecret: string;
   tenantKey: string;
+  tokenApiVersion?: "v2" | "v3";
   fetcher?: typeof fetch;
 }): FeishuAuthorizationClient {
   const fetcher = options.fetcher ?? fetch;
@@ -61,18 +65,23 @@ export function createFeishuClient(options: {
       return url.toString();
     },
     async exchangeAuthorizationCode({ code, callbackUrl, codeVerifier }) {
-      const tokenPayload = await requestPayload(fetcher, TOKEN_URL, "token_exchange", {
-        method: "POST",
-        headers: { "content-type": "application/json; charset=utf-8" },
-        body: JSON.stringify({
-          grant_type: "authorization_code",
-          client_id: options.appId,
-          client_secret: options.appSecret,
-          code,
-          redirect_uri: callbackUrl,
-          ...(codeVerifier === undefined ? {} : { code_verifier: codeVerifier }),
-        }),
-      });
+      const tokenPayload = await requestPayload(
+        fetcher,
+        TOKEN_URLS[options.tokenApiVersion ?? "v3"],
+        "token_exchange",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json; charset=utf-8" },
+          body: JSON.stringify({
+            grant_type: "authorization_code",
+            client_id: options.appId,
+            client_secret: options.appSecret,
+            code,
+            redirect_uri: callbackUrl,
+            ...(codeVerifier === undefined ? {} : { code_verifier: codeVerifier }),
+          }),
+        },
+      );
       const token = textValue(tokenPayload["access_token"]);
       if (!token || tokenPayload["token_type"] !== "Bearer") {
         throw invalidResponse("token_exchange");

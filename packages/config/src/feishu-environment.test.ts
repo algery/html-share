@@ -21,7 +21,29 @@ describe("Feishu environment", () => {
     expect(readFeishuEnv({ ...enabled, FEISHU_APP_ID: " cli-example " })).toEqual({
       ...enabled,
       FEISHU_ENABLED: true,
+      FEISHU_TOKEN_API_VERSION: "v3",
     });
+  });
+
+  it("allows explicit v2 compatibility while keeping the default v3", () => {
+    expect(readFeishuEnv({ ...enabled, FEISHU_TOKEN_API_VERSION: "v2" })).toMatchObject({
+      FEISHU_TOKEN_API_VERSION: "v2",
+    });
+  });
+
+  it.each(["", "V2", "v1", "v4", " v2 ", "https://example.test/token"])(
+    "rejects invalid token API version: %s",
+    (value) => {
+      expect(() => readFeishuEnv({ ...enabled, FEISHU_TOKEN_API_VERSION: value })).toThrow(
+        /FEISHU_TOKEN_API_VERSION/,
+      );
+    },
+  );
+
+  it.each([undefined, "false"])("rejects an invalid version even when disabled: %s", (enabled) => {
+    expect(() =>
+      readFeishuEnv({ FEISHU_ENABLED: enabled, FEISHU_TOKEN_API_VERSION: "v4" }),
+    ).toThrow(/FEISHU_TOKEN_API_VERSION/);
   });
 
   it.each(["", "1", "yes", "TRUE", " true "])("rejects an ambiguous switch: %s", (value) => {
