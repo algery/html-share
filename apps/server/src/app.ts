@@ -1,3 +1,4 @@
+import type { FeishuLoginOptions } from "./modules/auth/feishu-routes.js";
 import { registerServerReadiness } from "./app-readiness.js";
 import { registerInAppAuthCors, registerManagementApiCors } from "./app-cors.js";
 import { registerPasswordAccess } from "./app-password-access.js";
@@ -56,6 +57,7 @@ export interface ServerAppOptions {
     projectPerMinute: number;
   };
   dingtalk: DingTalkAuthorizationClient;
+  feishu?: FeishuLoginOptions;
   logger?: boolean;
   readiness?: () => Promise<void>;
   mcpTokens: McpTokenService;
@@ -149,6 +151,7 @@ export function buildServerApp(options: ServerAppOptions): FastifyInstance {
     ...(options.demoInAppCorpId === undefined ? {} : { demoInAppCorpId: options.demoInAppCorpId }),
     demoWebUrl: options.demoWebUrl,
     dingtalk: options.dingtalk,
+    ...(options.feishu === undefined ? {} : { feishu: options.feishu }),
     sessions: options.authSessions,
     ...(options.passwordAccess === undefined ? {} : { passwordAccess: options.passwordAccess }),
     ...(options.passwordStateSecret === undefined

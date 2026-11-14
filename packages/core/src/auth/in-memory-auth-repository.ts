@@ -1,8 +1,15 @@
+import {
+  AccountLinkError,
+  accountContactCutoff,
+  normalizeAccountContacts,
+} from "./account-link.js";
 import type {
   AccessSessionRecord,
   AuthRepository,
   AuthStateRecord,
   DingTalkIdentity,
+  FeishuIdentity,
+  PlatformUserIdentity,
   SessionAudience,
 } from "./contracts.js";
 
@@ -21,33 +28,83 @@ export class InMemoryAuthRepository implements AuthRepository {
   private readonly sessions = new Map<string, StoredSession>();
   private readonly users = new Map<
     string,
-    { id: string; identity: DingTalkIdentity; tenantId: string }
+    { id: string; identity: PlatformUserIdentity; tenantId: string; feishuKey?: string }
   >();
   private nextUserId = 1;
   private nextSessionId = 1;
 
-  async upsertUser(input: DingTalkIdentity & { tenantAppKeyRef: string; now: Date }) {
-    const key = `${input.tenantAppKeyRef}:${input.dingtalkUserId}`;
-    const existing = this.users.get(key);
-    if (existing !== undefined) {
-      existing.identity = {
-        ...existing.identity,
-        dingtalkUserId: input.dingtalkUserId,
-        displayName: input.displayName,
-        ...(input.dingtalkUnionId ? { dingtalkUnionId: input.dingtalkUnionId } : {}),
-      };
-      return { id: existing.id };
+  private readonly contacts = new Map<
+    string,
+    {
+      userId: string;
+      tenantId: string;
+      phone: string | null;
+      email: string | null;
+      observedAt: Date;
     }
-    const user = {
-      id: `user-${this.nextUserId++}`,
-      identity: {
-        dingtalkUserId: input.dingtalkUserId,
-        displayName: input.displayName,
-        ...(input.dingtalkUnionId ? { dingtalkUnionId: input.dingtalkUnionId } : {}),
-      },
-      tenantId: input.tenantAppKeyRef,
-    };
-    this.users.set(key, user);
+  >();
+
+  async upsertUser(input: DingTalkIdentity & { tenantAppKeyRef: string; now: Date }) {
+    return this.upsertIdentity(input);
+  }
+
+  async upsertFeishuUser(input: FeishuIdentity & { tenantAppKeyRef: string; now: Date }) {
+    return this.upsertIdentity(input);
+  }
+
+  private upsertIdentity(
+    input: (DingTalkIdentity | FeishuIdentity) & { tenantAppKeyRef: string; now: Date },
+  ) {
+    const feishu = "feishuOpenId" in input;
+    const provider = feishu ? "feishu" : "dingtalk";
+    const feishuKey = feishu
+      ? JSON.stringify([input.feishuAppId, input.feishuTenantKey, input.feishuOpenId])
+      : "";
+    const contacts = normalizeAccountContacts(input);
+    let user = [...this.users.values()].find(
+      (u) =>
+        u.tenantId === input.tenantAppKeyRef &&
+        (feishu ? u.feishuKey === feishuKey : u.identity.dingtalkUserId === input.dingtalkUserId),
+    );
+    if (!user) {
+      const ids = new Set(
+        [...this.contacts.values()]
+          .filter(
+            (c) =>
+              c.tenantId === input.tenantAppKeyRef &&
+              c.observedAt >= accountContactCutoff(input.now) &&
+              ((contacts.phone !== null && c.phone === contacts.phone) ||
+                (contacts.email !== null && c.email === contacts.email)),
+          )
+          .map((c) => c.userId),
+      );
+      if (ids.size > 1) throw new AccountLinkError("ACCOUNT_LINK_CONFLICT");
+      const id = [...ids][0];
+      user = id ? this.users.get(id) : undefined;
+      if (user && (feishu ? user.feishuKey !== undefined : user.identity.dingtalkUserId !== null))
+        throw new AccountLinkError("ACCOUNT_LINK_CONFLICT");
+    }
+    if (!user) {
+      const id = `user-${this.nextUserId++}`;
+      user = {
+        id,
+        identity: { id, dingtalkUserId: null, displayName: input.displayName },
+        tenantId: input.tenantAppKeyRef,
+      };
+      this.users.set(id, user);
+    }
+    user.identity.displayName = input.displayName;
+    if (feishu) user.feishuKey = feishuKey;
+    else {
+      user.identity.dingtalkUserId = input.dingtalkUserId;
+      if (input.dingtalkUnionId) user.identity.dingtalkUnionId = input.dingtalkUnionId;
+    }
+    this.contacts.set(`${user.id}:${provider}`, {
+      userId: user.id,
+      tenantId: user.tenantId,
+      ...contacts,
+      observedAt: input.now,
+    });
     return { id: user.id };
   }
 

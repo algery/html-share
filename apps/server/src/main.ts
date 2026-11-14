@@ -1,4 +1,10 @@
-import { EnvironmentValidationError, readDingTalkEnv, readServerEnv } from "@html-share/config";
+import { createFeishuClient } from "./modules/auth/feishu-client.js";
+import {
+  EnvironmentValidationError,
+  readDingTalkEnv,
+  readServerEnv,
+  readFeishuEnv,
+} from "@html-share/config";
 import {
   createSquareService,
   MAX_DEMOS_PER_USER,
@@ -19,7 +25,11 @@ import { buildDirectoryService } from "./app-directory.js";
 
 function loadEnvironment() {
   try {
-    return { dingtalk: readDingTalkEnv(process.env), server: readServerEnv(process.env) };
+    return {
+      dingtalk: readDingTalkEnv(process.env),
+      server: readServerEnv(process.env),
+      feishu: readFeishuEnv(process.env),
+    };
   } catch (error) {
     const message =
       error instanceof EnvironmentValidationError ? error.message : "Invalid environment variables";
@@ -38,6 +48,10 @@ if (process.env["DATABASE_DEPLOYMENT_TARGET_FILE"] !== undefined) {
   });
 }
 const environment = loadEnvironment();
+if (environment.feishu.FEISHU_ENABLED && !environment.dingtalk.DINGTALK_APP_ID) {
+  console.error("Feishu login requires the existing DINGTALK_APP_ID organization mapping");
+  process.exit(1);
+}
 const maxDemosPerUser = environment.server.MAX_DEMOS_PER_USER ?? MAX_DEMOS_PER_USER;
 const passwordCrypto = createPasswordCrypto(environment.server.PASSWORD_RESULT_ENCRYPTION_KEY);
 const passwordManagementCrypto = createPasswordCrypto(
@@ -129,6 +143,18 @@ const app = buildServerApp({
     : { demoInAppCorpId: environment.dingtalk.DINGTALK_CORP_ID }),
   demoWebUrl: environment.server.DEMO_WEB_URL,
   dingtalk,
+  ...(environment.feishu.FEISHU_ENABLED
+    ? {
+        feishu: {
+          client: createFeishuClient({
+            appId: environment.feishu.FEISHU_APP_ID,
+            appSecret: environment.feishu.FEISHU_APP_SECRET,
+            tenantKey: environment.feishu.FEISHU_TENANT_KEY,
+          }),
+          stateSecret: environment.server.AUTH_STATE_SECRET,
+        },
+      }
+    : {}),
   mcpTokens: createMcpTokenService({
     hashSecret: environment.server.MCP_TOKEN_HASH_SECRET,
     repository: repositories.mcpTokens,

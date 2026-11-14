@@ -1,6 +1,6 @@
 import { clearPasswordReturn, redirectPasswordFailure } from "./password-return.js";
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { AuthenticationError, type SessionAudience } from "@html-share/core";
+import { AccountLinkError, AuthenticationError, type SessionAudience } from "@html-share/core";
 import {
   DingTalkAuthorizationError,
   type DingTalkAuthorizationDiagnostic,
@@ -87,11 +87,26 @@ export async function completeAuthorization(input: {
     return input.reply.redirect(redirectUrl);
   } catch (error) {
     if (
-      (error instanceof AuthenticationError || error instanceof DingTalkAuthorizationError) &&
+      (error instanceof AuthenticationError ||
+        error instanceof DingTalkAuthorizationError ||
+        error instanceof AccountLinkError) &&
       input.contentLogin &&
       (await redirectPasswordFailure(input.request, input.reply, input.options, input.state))
     ) {
       return input.reply;
+    }
+    if (error instanceof AccountLinkError) {
+      const status = error.code === "ACCOUNT_LINK_CONFLICT" ? "account-conflict" : "denied";
+      if (input.contentLogin)
+        return sendContentAuthorizationError(
+          input.reply,
+          error.code === "ACCOUNT_LINK_CONFLICT"
+            ? "ACCOUNT_LINK_CONFLICT"
+            : "ORGANIZATION_ACCESS_DENIED",
+        );
+      return input.reply.redirect(
+        new URL(`/login?status=${status}`, input.options.appWebUrl).toString(),
+      );
     }
     if (error instanceof AuthenticationError) {
       logAuthorizationStep(input.request.log, input.request.traceId, {

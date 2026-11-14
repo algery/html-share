@@ -12,6 +12,7 @@ import {
   foreignKeySignature,
   unsupportedMysqlAlterations,
   mysqlTokenExpiryAlter,
+  mysqlDingtalkNullableAlter,
 } from "./database-schema-constraints.mjs";
 import { compareDefault, compareIdentityInitialization } from "./database-schema-defaults.mjs";
 import { compareChecks } from "./database-schema-checks.mjs";
@@ -91,6 +92,8 @@ export function parseMysqlTables(sql) {
   if (sql.includes(mysqlTokenExpiryAlter)) {
     tables.get("mcp_tokens")?.fields.set("expires_at", "DATETIME(3) NULL");
   }
+  if (sql.includes(mysqlDingtalkNullableAlter))
+    tables.get("users")?.fields.set("dingtalk_user_id", "LONGTEXT NULL");
   collectMysqlKeys(sql, tables);
   return tables;
 }

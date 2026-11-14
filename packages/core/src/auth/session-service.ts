@@ -1,23 +1,17 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  createHmac,
-  randomBytes,
-  timingSafeEqual,
-} from "node:crypto";
+import { encryptHandoffTicket, decryptHandoffTicket } from "./handoff-ticket.js";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import type {
   AccessSessionRecord,
   AuthRepository,
   DingTalkIdentity,
+  FeishuIdentity,
   SessionAudience,
 } from "./contracts.js";
 
 const AUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const SESSION_HANDOFF_TTL_MS = 60 * 1000;
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
-const HANDOFF_AAD = Buffer.from("html-share:session-handoff:v1", "utf8");
 
 export class AuthenticationError extends Error {
   constructor(
@@ -43,12 +37,15 @@ export function createAuthSessionService(options: AuthSessionServiceOptions) {
     .update(options.stateSecret)
     .digest();
 
-  async function beginAuthorization(input: { audience: SessionAudience; returnPath: string }) {
+  async function beginAuthorization(
+    input: { audience: SessionAudience; returnPath: string },
+    provider = "dingtalk",
+  ) {
     assertReturnPath(input.returnPath);
     const state = randomBytes(32).toString("base64url");
     const createdAt = now();
     await options.repository.createAuthState({
-      stateDigest: digestState(state, options.stateSecret),
+      stateDigest: digestState(state, options.stateSecret, provider),
       audience: input.audience,
       returnPath: input.returnPath,
       expiresAt: new Date(createdAt.getTime() + AUTH_STATE_TTL_MS),
@@ -67,6 +64,37 @@ export function createAuthSessionService(options: AuthSessionServiceOptions) {
 
   return {
     beginAuthorization,
+    beginFeishuAuthorization(input: { audience: SessionAudience; returnPath: string }) {
+      return beginAuthorization(input, "feishu");
+    },
+    async finishFeishuAuthorization(input: {
+      audience: SessionAudience;
+      state: string;
+      resolveIdentity: (authorization: { returnPath: string }) => Promise<FeishuIdentity>;
+    }) {
+      const state = await options.repository.consumeAuthState({
+        stateDigest: digestState(input.state, options.stateSecret, "feishu"),
+        now: now(),
+      });
+      if (state === null || state.audience !== input.audience)
+        throw new AuthenticationError("AUTH_STATE_INVALID");
+      const identity = await input.resolveIdentity({ returnPath: state.returnPath });
+      const completedAt = now();
+      const user = await options.repository.upsertFeishuUser({
+        ...identity,
+        now: completedAt,
+        tenantAppKeyRef: options.tenantAppKeyRef,
+      });
+      const token = randomBytes(32).toString("base64url");
+      const expiresAt = new Date(completedAt.getTime() + SESSION_TTL_MS);
+      await options.repository.createAccessSession({
+        userId: user.id,
+        tokenDigest: digestToken(token),
+        audience: state.audience,
+        expiresAt,
+      });
+      return { audience: state.audience, expiresAt, returnPath: state.returnPath, token };
+    },
 
     async finishAuthorization(input: {
       audience: SessionAudience;
@@ -200,72 +228,6 @@ export function createAuthSessionService(options: AuthSessionServiceOptions) {
   };
 }
 
-interface SessionHandoffPayload {
-  expiresAt: number;
-  sourceAudience: SessionAudience;
-  state: string;
-  targetAudience: SessionAudience;
-  userId: string;
-  version: 1;
-}
-
-function encryptHandoffTicket(payload: SessionHandoffPayload, key: Buffer) {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv, { authTagLength: 16 });
-  cipher.setAAD(HANDOFF_AAD);
-  const ciphertext = Buffer.concat([
-    cipher.update(JSON.stringify(payload), "utf8"),
-    cipher.final(),
-  ]);
-  return [
-    "v1",
-    iv.toString("base64url"),
-    ciphertext.toString("base64url"),
-    cipher.getAuthTag().toString("base64url"),
-  ].join(".");
-}
-
-function decryptHandoffTicket(ticket: string, key: Buffer): SessionHandoffPayload | null {
-  const parts = ticket.split(".");
-  if (parts.length !== 4 || parts[0] !== "v1") return null;
-  try {
-    const iv = Buffer.from(parts[1] ?? "", "base64url");
-    const ciphertext = Buffer.from(parts[2] ?? "", "base64url");
-    const tag = Buffer.from(parts[3] ?? "", "base64url");
-    if (iv.length !== 12 || ciphertext.length === 0 || tag.length !== 16) return null;
-    const decipher = createDecipheriv("aes-256-gcm", key, iv, { authTagLength: 16 });
-    decipher.setAAD(HANDOFF_AAD);
-    decipher.setAuthTag(tag);
-    const parsed: unknown = JSON.parse(
-      Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8"),
-    );
-    return isSessionHandoffPayload(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function isSessionHandoffPayload(value: unknown): value is SessionHandoffPayload {
-  if (typeof value !== "object" || value === null) return false;
-  const payload = value as Record<string, unknown>;
-  return (
-    payload["version"] === 1 &&
-    Number.isSafeInteger(payload["expiresAt"]) &&
-    isAudience(payload["sourceAudience"]) &&
-    isAudience(payload["targetAudience"]) &&
-    typeof payload["state"] === "string" &&
-    payload["state"].length > 0 &&
-    payload["state"].length <= 128 &&
-    typeof payload["userId"] === "string" &&
-    payload["userId"].length > 0 &&
-    payload["userId"].length <= 256
-  );
-}
-
-function isAudience(value: unknown): value is SessionAudience {
-  return value === "app" || value === "demo";
-}
-
 export type AuthSessionService = ReturnType<typeof createAuthSessionService>;
 
 function assertReturnPath(returnPath: string) {
@@ -273,14 +235,17 @@ function assertReturnPath(returnPath: string) {
     !returnPath.startsWith("/") ||
     returnPath.startsWith("//") ||
     returnPath.includes("\\") ||
-    returnPath.includes("\u0000")
+    [...returnPath].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
   ) {
     throw new AuthenticationError("RETURN_PATH_INVALID");
   }
 }
 
-function digestState(state: string, secret: string) {
-  return createHmac("sha256", secret).update(state).digest("base64url");
+function digestState(state: string, secret: string, provider = "dingtalk") {
+  return createHmac("sha256", secret)
+    .update(`html-share:auth-state:v1:${provider}\0`)
+    .update(state)
+    .digest("base64url");
 }
 
 function digestToken(token: string) {

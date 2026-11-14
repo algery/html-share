@@ -87,12 +87,17 @@ export function collectMysqlKeys(sql, tables) {
 }
 
 // Match the reviewed Token alteration exactly so other MODIFY clauses fail closed.
+export const mysqlDingtalkNullableAlter =
+  "ALTER TABLE `users` MODIFY COLUMN `dingtalk_user_id` LONGTEXT NULL;";
+
 export const mysqlTokenExpiryAlter =
   "ALTER TABLE `mcp_tokens` MODIFY COLUMN `expires_at` DATETIME(3) NULL;";
 
 // Reject alterations whose effects the schema checker cannot model.
 export function unsupportedMysqlAlterations(sql) {
-  const tokens = sqlTokens(sql.replace(mysqlTokenExpiryAlter, "")),
+  const tokens = sqlTokens(
+      sql.replace(mysqlTokenExpiryAlter, "").replace(mysqlDingtalkNullableAlter, ""),
+    ),
     issues = [];
   for (let index = 0; index < tokens.length; index += 1) {
     if (tokens[index] !== "alter" || tokens[index + 1] !== "table") continue;

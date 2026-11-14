@@ -5,13 +5,18 @@ export interface LoginState {
 }
 
 const LOGIN_STATES: Record<string, LoginState> = {
+  "account-conflict": {
+    description: "账户联系方式存在冲突，无法自动关联。请使用原登录方式，或联系管理员核实。",
+    title: "无法关联账户",
+    tone: "error",
+  },
   denied: {
     description: "你不属于可访问组织，平台没有建立登录态，也不会返回 Demo 内容。",
     title: "无访问权限",
     tone: "error",
   },
   error: {
-    description: "无法完成钉钉授权，请返回后重试。若持续失败，请携带诊断编号联系管理员。",
+    description: "无法完成组织授权，请返回后重试。若持续失败，请联系管理员。",
     title: "授权未完成",
     tone: "error",
   },

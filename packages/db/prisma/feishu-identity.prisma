@@ -1,0 +1,36 @@
+model FeishuIdentity {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  identityKey String @map("identity_key") @db.VarChar(64)
+  feishuAppId String @map("feishu_app_id") @db.VarChar(191)
+  feishuTenantKey String @map("feishu_tenant_key") @db.VarChar(191)
+  feishuOpenId String @map("feishu_open_id") @db.VarChar(191)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, identityKey])
+  @@unique([userId])
+  @@map("feishu_identities")
+}
+
+model AccountContact {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  provider String @db.VarChar(16)
+  phone String? @db.VarChar(16)
+  email String? @db.VarChar(254)
+  observedAt DateTime @map("observed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([tenantId, phone])
+  @@index([tenantId, email])
+  @@map("account_contacts")
+}

@@ -251,7 +251,7 @@ async function createOwnerFixture(prisma: PrismaClient) {
 }
 
 function createPrepareInput(
-  owner: { dingtalkUserId: string; displayName: string; id: string },
+  owner: { dingtalkUserId: string | null; displayName: string; id: string },
   now: Date,
   overrides: { action?: "create" | "replace"; projectId?: string } = {},
 ) {

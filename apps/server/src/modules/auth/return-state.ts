@@ -13,7 +13,10 @@ export function redirectToAudience(input: {
   returnPath: string;
 }) {
   const baseUrl = input.audience === "app" ? input.appWebUrl : input.demoWebUrl;
-  return new URL(input.returnPath, baseUrl).toString();
+  if (!isSafeRelativePath(input.returnPath)) throw new Error("RETURN_PATH_INVALID");
+  const target = new URL(input.returnPath, baseUrl);
+  if (target.origin !== new URL(baseUrl).origin) throw new Error("RETURN_PATH_INVALID");
+  return target.toString();
 }
 
 function isSafeRelativePath(value: string) {
@@ -21,6 +24,6 @@ function isSafeRelativePath(value: string) {
     value.startsWith("/") &&
     !value.startsWith("//") &&
     !value.includes("\\") &&
-    !value.includes("\u0000")
+    !Array.from(value).some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)
   );
 }

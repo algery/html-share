@@ -15,6 +15,7 @@ export function registerPasswordAccess(app: FastifyInstance, options: ServerAppO
   const secureCookie = usesSecurePasswordCookie(options.demoWebUrl);
   registerPasswordRoutes(app, {
     demoHost: options.demoHost,
+    feishuEnabled: options.feishu !== undefined,
     demoWebUrl: options.demoWebUrl,
     passwordAccess,
     stateSecret: passwordStateSecret,

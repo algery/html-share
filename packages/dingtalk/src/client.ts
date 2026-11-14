@@ -1,5 +1,6 @@
-import type { DingTalkIdentity } from "@html-share/core";
+import { normalizeAccountContacts, type DingTalkIdentity } from "@html-share/core";
 
+import { requestAuthorizationJson } from "./client-http.js";
 import { simulatorIdentity } from "./directory-simulator.js";
 
 export class DingTalkAuthorizationError extends Error {
@@ -133,8 +134,10 @@ async function exchangeCodeForIdentity(
   const token = await requestDingTalkValue({
     readValue: readAccessToken,
     ...(reportDiagnostic === undefined ? {} : { reportDiagnostic }),
-    request: () =>
+    request: (signal) =>
       fetch(new URL("/v1.0/oauth2/userAccessToken", options.apiBaseUrl), {
+        signal,
+        redirect: "error",
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -149,8 +152,10 @@ async function exchangeCodeForIdentity(
   return requestDingTalkValue({
     readValue: readIdentity,
     ...(reportDiagnostic === undefined ? {} : { reportDiagnostic }),
-    request: () =>
+    request: (signal) =>
       fetch(new URL("/v1.0/contact/users/me", options.apiBaseUrl), {
+        signal,
+        redirect: "error",
         headers: { "x-acs-dingtalk-access-token": token },
       }),
     stage: "identity_lookup",
@@ -160,13 +165,13 @@ async function exchangeCodeForIdentity(
 async function requestDingTalkValue<T>(input: {
   readValue: (payload: unknown) => T | undefined;
   reportDiagnostic?: DingTalkAuthorizationDiagnosticReporter;
-  request: () => Promise<Response>;
+  request: (signal: AbortSignal) => Promise<Response>;
   stage: DingTalkAuthorizationStage;
 }): Promise<T> {
   const startedAt = performance.now();
   reportSafely(input.reportDiagnostic, { outcome: "started", stage: input.stage });
   try {
-    const response = await input.request();
+    const { response, payload } = await requestAuthorizationJson(input.request);
     if (!response.ok) {
       const details = {
         failureReason: "provider_rejected",
@@ -178,9 +183,13 @@ async function requestDingTalkValue<T>(input: {
         ...details,
         outcome: "failed",
       });
-      throw new DingTalkAuthorizationError("AUTHORIZATION_DENIED", details);
+      throw new DingTalkAuthorizationError(
+        response.status === 429 || response.status >= 500
+          ? "PROVIDER_UNAVAILABLE"
+          : "AUTHORIZATION_DENIED",
+        details,
+      );
     }
-    const payload = await readJsonPayload(response);
     const value = input.readValue(payload);
     if (value === undefined) {
       const details = {
@@ -238,19 +247,26 @@ function readIdentity(payload: unknown): DingTalkIdentity | undefined {
     return undefined;
   }
   const unionId = payload["unionId"];
+  const mobile = typeof payload["mobile"] === "string" ? payload["mobile"].trim() : "";
+  const stateCode = payload["stateCode"];
+  const phone =
+    mobile &&
+    !mobile.startsWith("+") &&
+    typeof stateCode === "string" &&
+    /^\+?[1-9]\d{0,2}$/.test(stateCode)
+      ? `+${stateCode.replace(/^\+/, "")}${mobile}`
+      : mobile;
+  const contacts = normalizeAccountContacts({
+    phone,
+    ...(typeof payload["email"] === "string" ? { email: payload["email"] } : {}),
+  });
   return {
     dingtalkUserId: payload["openId"],
     displayName: payload["nick"],
     ...(typeof unionId === "string" && unionId.trim() ? { dingtalkUnionId: unionId } : {}),
+    ...(contacts.phone === null ? {} : { phone: contacts.phone }),
+    ...(contacts.email === null ? {} : { email: contacts.email }),
   };
-}
-
-async function readJsonPayload(response: Response): Promise<unknown> {
-  try {
-    return await response.json();
-  } catch {
-    return undefined;
-  }
 }
 
 function elapsedMilliseconds(startedAt: number) {

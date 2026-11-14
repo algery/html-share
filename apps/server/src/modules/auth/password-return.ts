@@ -63,6 +63,7 @@ export async function redirectPasswordFailure(
   reply: FastifyReply,
   options: AuthRouteOptions,
   authState: string,
+  provider: "dingtalk" | "feishu" = "dingtalk",
 ) {
   if (request.hostname !== options.demoHost) return false;
   const secureCookie = usesSecurePasswordCookie(options.demoWebUrl);
@@ -86,6 +87,6 @@ export async function redirectPasswordFailure(
   const returnPath = decoded.returnPath;
   reply
     .header("cache-control", "no-store")
-    .redirect(`/auth/password?return_path=${encodeURIComponent(returnPath)}&error=dingtalk`);
+    .redirect(`/auth/password?return_path=${encodeURIComponent(returnPath)}&error=${provider}`);
   return true;
 }

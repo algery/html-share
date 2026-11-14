@@ -9,6 +9,7 @@ export type {
   AuthRepository,
   AuthStateRecord,
   DingTalkIdentity,
+  FeishuIdentity,
   PlatformUserIdentity,
   SessionAudience,
 } from "./auth/contracts.js";
@@ -98,3 +99,9 @@ export * from "./organization/contracts.js";
 export * from "./organization/directory-service.js";
 
 export { contentTypeForPath } from "./project/content-mime.js";
+
+export {
+  AccountLinkError,
+  normalizeAccountContacts,
+  accountContactCutoff,
+} from "./auth/account-link.js";

@@ -1,3 +1,5 @@
+import { registerFeishuRoutes, type FeishuLoginOptions } from "./feishu-routes.js";
+import { sendOrganizationLoginPage } from "../content/organization-login-page.js";
 import { sendContentNotFound } from "../content/error-pages.js";
 import {
   validPasswordReturn,
@@ -29,6 +31,7 @@ export interface AuthRouteOptions {
   demoInAppCorpId?: string;
   demoWebUrl: string;
   dingtalk: DingTalkAuthorizationClient;
+  feishu?: FeishuLoginOptions;
   sessions: AuthSessionService;
   passwordAccess?: PasswordAccessService;
   passwordStateSecret?: string;
@@ -36,6 +39,7 @@ export interface AuthRouteOptions {
 
 export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptions) {
   registerSessionHandoffRoutes(app, options);
+  registerFeishuRoutes(app, options);
   app.get("/auth/login", async (request, reply) => {
     const audience = getAudience(request.hostname, options);
     const returnPath = readReturnPath(readQuery(request.query, "return_path"));
@@ -72,6 +76,16 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
           .header("cache-control", "no-store")
           .code(400)
           .send({ error: "invalid_auth_request" });
+    }
+    if (options.feishu !== undefined && readQuery(request.query, "provider") !== "dingtalk") {
+      const params = new URLSearchParams({ return_path: returnPath });
+      if (passwordReturn !== undefined) params.set("password_return", passwordReturn);
+      const status = readQuery(request.query, "status");
+      return sendOrganizationLoginPage(reply, {
+        dingtalkUrl: `/auth/content-login?${params}&provider=dingtalk`,
+        feishuUrl: `/auth/feishu/login?${params}`,
+        ...(status === undefined ? {} : { status }),
+      });
     }
     const { state } = await options.sessions.beginAuthorization({ audience: "demo", returnPath });
     if (passwordReturn !== undefined)

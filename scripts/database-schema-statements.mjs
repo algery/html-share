@@ -79,6 +79,8 @@ export function unsupportedPostgresIdentityTail(sql) {
         "project_square_audiences",
         "project_square_covers",
         "square_audit_logs",
+        "feishu_identities",
+        "account_contacts",
       ].includes(statement[5]);
     const squareIndex =
       statement[0] === "create" &&
@@ -89,6 +91,8 @@ export function unsupportedPostgresIdentityTail(sql) {
         "project_square_audiences",
         "project_square_covers",
         "square_audit_logs",
+        "feishu_identities",
+        "account_contacts",
       ].includes(statement[7]);
     const unionColumn =
       JSON.stringify(statement) ===
@@ -109,7 +113,24 @@ export function unsupportedPostgresIdentityTail(sql) {
       ]);
     const tokenExpiry =
       statement.join(" ") === "alter table mcp_tokens alter column expires_at drop not null";
-    if (!create && !insert && !squareCreate && !squareIndex && !unionColumn && !tokenExpiry)
+    const feishuUniqueIndex =
+      statement[0] === "create" &&
+      statement[1] === "unique" &&
+      statement[2] === "index" &&
+      statement[7] === "on" &&
+      ["feishu_identities", "account_contacts"].includes(statement[8]);
+    const dingtalkNullable =
+      statement.join(" ") === "alter table users alter column dingtalk_user_id drop not null";
+    if (
+      !create &&
+      !insert &&
+      !squareCreate &&
+      !squareIndex &&
+      !unionColumn &&
+      !tokenExpiry &&
+      !feishuUniqueIndex &&
+      !dingtalkNullable
+    )
       issues.push("Unsupported statement after PostgreSQL identity migration");
   }
   return issues;

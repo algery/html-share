@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { AccountLinkError } from "@html-share/core";
+import { linkAccount, type LoginIdentity } from "../account-identity.js";
 import type { AuthRepository, SessionAudience } from "@html-share/core";
 import { AccessAudience } from "../generated/prisma-mysql/client.js";
 import { assertSameText, textDigest } from "./path-identity.js";
@@ -6,44 +8,24 @@ import { mysqlTransaction } from "./transaction.js";
 import type { MysqlClient } from "./types.js";
 
 export function createMysqlAuthRepository(prisma: MysqlClient): AuthRepository {
+  function upsertIdentity(input: LoginIdentity) {
+    return mysqlTransaction(prisma, async (tx) => {
+      await tx.$executeRaw`INSERT INTO tenants (id, name, dingtalk_app_key_ref, updated_at)
+        VALUES (${randomUUID()}, 'demo share organization', ${input.tenantAppKeyRef}, ${input.now})
+        ON DUPLICATE KEY UPDATE id = id`;
+      const tenants = await tx.$queryRaw<{ id: string; appKey: string; status: string }[]>`
+        SELECT id, dingtalk_app_key_ref AS appKey, status FROM tenants
+        WHERE app_key_digest = ${textDigest(input.tenantAppKeyRef)} FOR UPDATE`;
+      const tenant = tenants[0];
+      if (!tenant) throw new Error("DATABASE_IDENTITY_NOT_FOUND");
+      assertSameText(tenant.appKey, input.tenantAppKeyRef);
+      if (tenant.status !== "ACTIVE") throw new AccountLinkError("ACCOUNT_DISABLED");
+      return linkAccount(tx, tenant.id, input);
+    });
+  }
   return {
-    upsertUser(input) {
-      return mysqlTransaction(prisma, async (tx) => {
-        // The generated digest index arbitrates concurrent first logins. Never
-        // update identity data until its complete source string is verified.
-        await tx.$executeRaw`INSERT INTO tenants
-          (id, name, dingtalk_app_key_ref, updated_at)
-          VALUES (${randomUUID()}, 'demo share organization', ${input.tenantAppKeyRef}, ${input.now})
-          ON DUPLICATE KEY UPDATE id = id`;
-        const tenants = await tx.$queryRaw<{ id: string; appKey: string }[]>`
-          SELECT id, dingtalk_app_key_ref AS appKey FROM tenants
-          WHERE app_key_digest = ${textDigest(input.tenantAppKeyRef)} FOR UPDATE`;
-        const tenant = tenants[0];
-        if (!tenant) throw new Error("DATABASE_IDENTITY_NOT_FOUND");
-        assertSameText(tenant.appKey, input.tenantAppKeyRef);
-        await tx.$executeRaw`INSERT INTO users
-          (id, tenant_id, dingtalk_user_id, display_name, last_login_at, updated_at)
-          VALUES (${randomUUID()}, ${tenant.id}, ${input.dingtalkUserId},
-            ${input.displayName}, ${input.now}, ${input.now})
-          ON DUPLICATE KEY UPDATE id = id`;
-        const users = await tx.$queryRaw<{ id: string; dingtalkUserId: string }[]>`
-          SELECT id, dingtalk_user_id AS dingtalkUserId FROM users
-          WHERE tenant_id = ${tenant.id}
-            AND dingtalk_user_digest = ${textDigest(input.dingtalkUserId)} FOR UPDATE`;
-        const user = users[0];
-        if (!user) throw new Error("DATABASE_IDENTITY_NOT_FOUND");
-        assertSameText(user.dingtalkUserId, input.dingtalkUserId);
-        await tx.user.update({
-          where: { id: user.id },
-          data: {
-            displayName: input.displayName,
-            lastLoginAt: input.now,
-            ...(input.dingtalkUnionId ? { dingtalkUnionId: input.dingtalkUnionId } : {}),
-          },
-        });
-        return { id: user.id };
-      });
-    },
+    upsertUser: upsertIdentity,
+    upsertFeishuUser: upsertIdentity,
 
     async createAuthState(input) {
       await prisma.authState.create({
@@ -72,8 +54,18 @@ export function createMysqlAuthRepository(prisma: MysqlClient): AuthRepository {
     },
 
     async createAccessSession(input) {
-      await prisma.accessSession.create({
-        data: { ...input, audience: toDatabaseAudience(input.audience) },
+      await mysqlTransaction(prisma, async (tx) => {
+        // Lock tenant before user, matching identity-upsert lock order.
+        const tenants = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id FROM tenants WHERE id = (SELECT tenant_id FROM users WHERE id = ${input.userId})
+            AND status = 'ACTIVE' FOR SHARE`;
+        const users = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id FROM users WHERE id = ${input.userId} AND status = 'ACTIVE' FOR SHARE`;
+        if (tenants.length !== 1 || users.length !== 1)
+          throw new AccountLinkError("ACCOUNT_DISABLED");
+        await tx.accessSession.create({
+          data: { ...input, audience: toDatabaseAudience(input.audience) },
+        });
       });
     },
 

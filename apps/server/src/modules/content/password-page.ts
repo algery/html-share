@@ -20,6 +20,7 @@ export function sendPasswordPage(
     state: string;
     returnPath: string;
     loginFailed?: boolean;
+    feishuEnabled?: boolean;
   },
 ) {
   const nonce = randomBytes(18).toString("base64url");
@@ -27,7 +28,7 @@ export function sendPasswordPage(
     return_path: input.returnPath,
     password_return: input.state,
   });
-  const loginUrl = `/auth/content-login?${loginParams}`;
+  const loginUrl = `/auth/content-login?${loginParams}${input.feishuEnabled ? "&provider=dingtalk" : ""}`;
   const values = JSON.stringify({ state: input.state, returnPath: input.returnPath }).replaceAll(
     "<",
     "\\u003c",
@@ -54,15 +55,16 @@ button{margin-top:16px;padding:11px 16px;border:1px solid #101828;background:#10
 button:hover{background:#1d2939;box-shadow:0 4px 10px rgba(16,24,40,.14)}button:active{transform:translateY(1px)}button:disabled{opacity:.58;cursor:wait;transform:none;box-shadow:none}
 #status{min-height:21px;margin:10px 0 0;color:#b42318;font-size:13px}.divider{display:flex;align-items:center;gap:12px;margin:24px 0;color:#98a2b3;font-size:12px}
 .divider::before,.divider::after{content:"";height:1px;flex:1;background:#eaecf0}.secondary{display:flex;align-items:center;justify-content:center;padding:11px 16px;color:#344054;background:#fff;border:1px solid #d0d5dd;font-weight:600;text-decoration:none;overflow-wrap:anywhere;box-shadow:0 1px 2px rgba(16,24,40,.04);transition:border-color .16s,background .16s,box-shadow .16s}
-.secondary:hover{border-color:#98a2b3;background:#f9fafb;box-shadow:0 2px 6px rgba(16,24,40,.06)}:focus-visible{outline:3px solid #84adff;outline-offset:3px}
+.secondary+.secondary{margin-top:12px}.secondary:hover{border-color:#98a2b3;background:#f9fafb;box-shadow:0 2px 6px rgba(16,24,40,.06)}:focus-visible{outline:3px solid #84adff;outline-offset:3px}
 noscript p{margin:18px 0 0;color:#667085;font-size:13px}@media(max-width:480px){body{padding:16px}.password-card{padding:30px 22px;border-radius:16px}.mark{margin-bottom:20px}h1{font-size:22px}.intro{margin-bottom:26px}}
 </style></head><body><main class="password-card"><div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="5" y="10" width="14" height="10" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="15" r="1.2" fill="currentColor"/></svg></div><h1>此链接已开启密码访问</h1>
-<p class="intro">输入访问密码，或使用钉钉账号继续</p>
+<p class="intro">输入访问密码，或使用${input.feishuEnabled ? "组织" : "钉钉"}账号继续</p>
 <form id="password-form" action="/auth/password/verify" method="post" novalidate>
 <label for="password">访问密码</label><input id="password" name="password" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="status" placeholder="请输入访问密码" autofocus>
 <button id="submit" type="submit">打开链接</button></form>
-<p id="status" role="status" aria-live="polite">${input.loginFailed ? "钉钉登录未完成，请输入访问密码或重新登录。" : ""}</p>
+<p id="status" role="status" aria-live="polite">${input.loginFailed ? `${input.feishuEnabled ? "组织" : "钉钉"}登录未完成，请输入访问密码或重新登录。` : ""}</p>
 <div class="divider" aria-hidden="true">或</div><a class="secondary" href="${escapeAttribute(loginUrl)}">钉钉登录打开</a>
+${input.feishuEnabled ? `<a class="secondary" href="${escapeAttribute(`/auth/feishu/login?${loginParams}`)}">飞书登录打开</a>` : ""}
 <noscript><p>请启用 JavaScript 后输入访问密码，或选择钉钉登录打开。</p></noscript>
 </main><script nonce="${nonce}">
 const input=${values};

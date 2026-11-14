@@ -41,6 +41,7 @@ export function registerManagementApiCors(app: FastifyInstance, appWebUrl: strin
       !request.url.startsWith("/api/csrf") &&
       !request.url.startsWith("/api/admin/") &&
       !request.url.startsWith("/api/skills/") &&
+      requestPath !== "/auth/config" &&
       requestPath !== "/auth/current" &&
       requestPath !== "/auth/logout"
     )

@@ -108,6 +108,8 @@ function applySecurityHeaders(reply: FastifyReply) {
 function isLoginAttempt(url: string) {
   const pathname = url.split("?", 1)[0];
   return (
+    pathname === "/auth/feishu/login" ||
+    pathname === "/auth/feishu/callback" ||
     pathname === "/auth/login" ||
     pathname === "/auth/content-login" ||
     pathname === "/auth/callback" ||

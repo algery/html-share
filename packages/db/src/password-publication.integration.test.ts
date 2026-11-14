@@ -24,7 +24,7 @@ suite("password publication transactions", () => {
   });
   const service = createUploadService({ repository });
   let tenantId: string;
-  let owner: { id: string; dingtalkUserId: string; displayName: string };
+  let owner: { id: string; dingtalkUserId: string | null; displayName: string };
   beforeAll(async () => {
     const tenant = await prisma.tenant.create({
       data: { name: "Password publication test", dingtalkAppKeyRef: randomUUID() },

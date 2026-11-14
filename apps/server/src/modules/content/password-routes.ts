@@ -21,6 +21,7 @@ import {
 
 export interface PasswordRouteOptions {
   demoHost: string;
+  feishuEnabled?: boolean;
   demoWebUrl: string;
   passwordAccess: PasswordAccessService;
   stateSecret: string;
@@ -72,7 +73,8 @@ export function registerPasswordRoutes(app: FastifyInstance, options: PasswordRo
     return sendPasswordPage(reply, {
       state,
       returnPath,
-      loginFailed: readQuery(request.query, "error") === "dingtalk",
+      loginFailed: ["dingtalk", "feishu"].includes(readQuery(request.query, "error") ?? ""),
+      feishuEnabled: options.feishuEnabled ?? false,
     });
   });
 

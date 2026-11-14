@@ -1,5 +1,6 @@
 import {
   AuthenticationError,
+  AccountLinkError,
   McpTokenError,
   PasswordManagementError,
   ProjectDeletionError,
@@ -59,6 +60,7 @@ function protectedRepository<T extends object>(repository: T): T {
         } catch (error) {
           if (
             error instanceof AuthenticationError ||
+            error instanceof AccountLinkError ||
             error instanceof McpTokenError ||
             error instanceof PasswordManagementError ||
             error instanceof ProjectDeletionError ||

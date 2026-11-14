@@ -1,3 +1,5 @@
+import { AccountLinkError } from "@html-share/core";
+import { linkAccount, type LoginIdentity } from "./account-identity.js";
 import { PrismaPg } from "@prisma/adapter-pg";
 
 import type {
@@ -14,38 +16,25 @@ export function createPrismaClient(databaseUrl: string) {
 }
 
 export function createAuthRepository(prisma: PrismaClient): AuthRepository {
+  async function upsertIdentity(input: LoginIdentity) {
+    return prisma.$transaction(
+      async (tx) => {
+        // Native ON CONFLICT plus this row lock serialize both providers in one organization.
+        await tx.$executeRaw`INSERT INTO tenants (id, name, dingtalk_app_key_ref, updated_at)
+        VALUES (gen_random_uuid(), 'demo share organization', ${input.tenantAppKeyRef}, ${input.now})
+        ON CONFLICT (dingtalk_app_key_ref) DO NOTHING`;
+        const tenants = await tx.$queryRaw<{ id: string; status: string }[]>`
+        SELECT id, status FROM tenants WHERE dingtalk_app_key_ref = ${input.tenantAppKeyRef} FOR UPDATE`;
+        const tenant = tenants[0];
+        if (!tenant || tenant.status !== "ACTIVE") throw new AccountLinkError("ACCOUNT_DISABLED");
+        return linkAccount(tx, tenant.id, input);
+      },
+      { isolationLevel: "ReadCommitted", maxWait: 5_000, timeout: 10_000 },
+    );
+  }
   return {
-    async upsertUser(input) {
-      const tenant = await prisma.tenant.upsert({
-        where: { dingtalkAppKeyRef: input.tenantAppKeyRef },
-        create: {
-          dingtalkAppKeyRef: input.tenantAppKeyRef,
-          name: "demo share organization",
-        },
-        update: {},
-      });
-      const user = await prisma.user.upsert({
-        where: {
-          tenantId_dingtalkUserId: {
-            tenantId: tenant.id,
-            dingtalkUserId: input.dingtalkUserId,
-          },
-        },
-        create: {
-          displayName: input.displayName,
-          dingtalkUserId: input.dingtalkUserId,
-          ...(input.dingtalkUnionId ? { dingtalkUnionId: input.dingtalkUnionId } : {}),
-          lastLoginAt: input.now,
-          tenantId: tenant.id,
-        },
-        update: {
-          ...(input.dingtalkUnionId ? { dingtalkUnionId: input.dingtalkUnionId } : {}),
-          displayName: input.displayName,
-          lastLoginAt: input.now,
-        },
-      });
-      return { id: user.id };
-    },
+    upsertUser: upsertIdentity,
+    upsertFeishuUser: upsertIdentity,
 
     async createAuthState(input) {
       await prisma.authState.create({
@@ -78,13 +67,23 @@ export function createAuthRepository(prisma: PrismaClient): AuthRepository {
     },
 
     async createAccessSession(input) {
-      await prisma.accessSession.create({
-        data: {
-          audience: toDatabaseAudience(input.audience),
-          expiresAt: input.expiresAt,
-          tokenDigest: input.tokenDigest,
-          userId: input.userId,
-        },
+      await prisma.$transaction(async (tx) => {
+        // Lock tenant before user, matching identity-upsert lock order.
+        const tenants = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id FROM tenants WHERE id = (SELECT tenant_id FROM users WHERE id = ${input.userId}::uuid)
+            AND status = 'ACTIVE' FOR SHARE`;
+        const users = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id FROM users WHERE id = ${input.userId}::uuid AND status = 'ACTIVE' FOR SHARE`;
+        if (tenants.length !== 1 || users.length !== 1)
+          throw new AccountLinkError("ACCOUNT_DISABLED");
+        await tx.accessSession.create({
+          data: {
+            audience: toDatabaseAudience(input.audience),
+            expiresAt: input.expiresAt,
+            tokenDigest: input.tokenDigest,
+            userId: input.userId,
+          },
+        });
       });
     },
 
@@ -126,7 +125,7 @@ export function createAuthRepository(prisma: PrismaClient): AuthRepository {
 
 function asIdentity(user: {
   id: string;
-  dingtalkUserId: string;
+  dingtalkUserId: string | null;
   dingtalkUnionId: string | null;
   displayName: string;
 }) {

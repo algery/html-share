@@ -20,7 +20,6 @@ const { Client, StreamableHTTPClientTransport } = await import(
 const { S3Client, DeleteBucketCommand } = await import(
   pathToFileURL(storageRequire.resolve("@aws-sdk/client-s3")).href
 );
-
 export { isolatedConfiguration, fixture } from "./password-smoke-fixture.mjs";
 export async function createHarness(config, check, options = {}) {
   const connection = createSmokeDatabase(config);
@@ -147,6 +146,7 @@ export async function createHarness(config, check, options = {}) {
       authSessions: sessions,
       ...squareHarnessOptions(options, repositories, demoUrl),
       dingtalk: createSimulatorDingTalkClient(),
+      ...(options.feishu === undefined ? {} : { feishu: options.feishu }),
       logger: options.logger ?? false,
       readiness: readiness?.serverReadiness,
       trustProxy: ["127.0.0.1"],

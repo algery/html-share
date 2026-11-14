@@ -6,18 +6,28 @@ function fixture() {
   const query = vi.fn();
   const execute = vi.fn().mockResolvedValue(1);
   const updateUser = vi.fn().mockResolvedValue({});
+  const findUser = vi.fn();
+  const contact = vi.fn().mockResolvedValue({});
   const updateState = vi.fn().mockResolvedValue({});
   const tx = {
     $queryRaw: query,
     $executeRaw: execute,
-    user: { update: updateUser },
+    user: { update: updateUser, findFirst: findUser },
+    accountContact: { upsert: contact },
     authState: { update: updateState },
   } as unknown as MysqlTransactionClient;
   const transaction = vi.fn((operation: (tx: MysqlTransactionClient) => Promise<unknown>) =>
     operation(tx),
   );
   const prisma = { $transaction: transaction } as unknown as MysqlClient;
-  return { repository: createMysqlAuthRepository(prisma), query, execute, updateUser, updateState };
+  return {
+    repository: createMysqlAuthRepository(prisma),
+    query,
+    execute,
+    updateUser,
+    updateState,
+    findUser,
+  };
 }
 
 describe("MySQL authentication identities", () => {
@@ -40,29 +50,45 @@ describe("MySQL authentication identities", () => {
     expect(test.updateUser).not.toHaveBeenCalled();
   });
 
-  it("does not overwrite another user on a generated user digest collision", async () => {
+  it("does not overwrite a different full DingTalk identity returned by the database", async () => {
     const test = fixture();
-    test.query.mockResolvedValueOnce([{ id: "tenant", appKey: input.tenantAppKeyRef }]);
-    test.query.mockResolvedValueOnce([{ id: "user", dingtalkUserId: "different identity" }]);
+    test.query.mockResolvedValueOnce([
+      { id: "tenant", appKey: input.tenantAppKeyRef, status: "ACTIVE" },
+    ]);
+    test.findUser.mockResolvedValue({
+      id: "user",
+      dingtalkUserId: "different identity",
+      status: "ACTIVE",
+    });
     await expect(test.repository.upsertUser(input)).rejects.toMatchObject({
-      name: "DatabaseOperationError",
-      message: "Database operation failed (identity)",
+      code: "ACCOUNT_LINK_CONFLICT",
     });
     expect(test.updateUser).not.toHaveBeenCalled();
   });
 
   it("retains complete Unicode identity data and the persisted user id on repeated login", async () => {
     const test = fixture();
-    test.query.mockResolvedValueOnce([{ id: "tenant", appKey: input.tenantAppKeyRef }]);
     test.query.mockResolvedValueOnce([
-      { id: "existing-user", dingtalkUserId: input.dingtalkUserId },
+      { id: "tenant", appKey: input.tenantAppKeyRef, status: "ACTIVE" },
     ]);
+    test.findUser.mockResolvedValue({
+      id: "existing-user",
+      dingtalkUserId: input.dingtalkUserId,
+      status: "ACTIVE",
+    });
+    test.updateUser.mockResolvedValue({ id: "existing-user" });
     await expect(test.repository.upsertUser(input)).resolves.toEqual({ id: "existing-user" });
     expect(test.execute.mock.calls[0]).toContain(input.tenantAppKeyRef);
-    expect(test.execute.mock.calls[1]).toContain(input.dingtalkUserId);
+    expect(test.findUser).toHaveBeenCalledWith({
+      where: { tenantId: "tenant", dingtalkUserId: input.dingtalkUserId },
+    });
     expect(test.updateUser).toHaveBeenCalledWith({
       where: { id: "existing-user" },
-      data: { displayName: input.displayName, lastLoginAt: now },
+      data: {
+        displayName: input.displayName,
+        lastLoginAt: now,
+        dingtalkUserId: input.dingtalkUserId,
+      },
     });
   });
 

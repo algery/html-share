@@ -52,7 +52,7 @@ export function createProjectDeletionService(options: {
 
   return {
     isAdministrator(actor: PlatformUserIdentity) {
-      return administrators.has(actor.dingtalkUserId);
+      return actor.dingtalkUserId !== null && administrators.has(actor.dingtalkUserId);
     },
 
     deleteOwnedProject(input: { projectKey: string; userId: string }) {
@@ -104,7 +104,8 @@ export function createProjectDeletionService(options: {
 }
 
 function assertAdministrator(user: PlatformUserIdentity, administrators: ReadonlySet<string>) {
-  if (!administrators.has(user.dingtalkUserId)) throw new ProjectDeletionError("ADMIN_FORBIDDEN");
+  if (user.dingtalkUserId === null || !administrators.has(user.dingtalkUserId))
+    throw new ProjectDeletionError("ADMIN_FORBIDDEN");
 }
 
 function normalizeReason(value: string) {

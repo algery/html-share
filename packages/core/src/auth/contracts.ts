@@ -4,10 +4,24 @@ export interface DingTalkIdentity {
   dingtalkUserId: string;
   dingtalkUnionId?: string | null;
   displayName: string;
+  phone?: string;
+  email?: string;
 }
 
-export interface PlatformUserIdentity extends DingTalkIdentity {
+export interface FeishuIdentity {
+  feishuOpenId: string;
+  feishuAppId: string;
+  feishuTenantKey: string;
+  displayName: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface PlatformUserIdentity {
   id: string;
+  displayName: string;
+  dingtalkUserId: string | null;
+  dingtalkUnionId?: string | null;
 }
 
 export interface AuthStateRecord {
@@ -24,6 +38,9 @@ export interface AccessSessionRecord {
 }
 
 export interface AuthRepository {
+  upsertFeishuUser(
+    input: FeishuIdentity & { tenantAppKeyRef: string; now: Date },
+  ): Promise<{ id: string }>;
   upsertUser(
     input: DingTalkIdentity & { tenantAppKeyRef: string; now: Date },
   ): Promise<{ id: string }>;
