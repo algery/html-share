@@ -1,5 +1,11 @@
+import { prepareCoverUpload, stagedCover, type UploadPublicationInput } from "./upload-cover.js";
 import { publishedAccessResult, type PasswordCrypto } from "./password-upload-policy.js";
-import { type UploadRepository, type UploadTaskSummary, UploadError } from "@html-share/core";
+import {
+  type UploadRepository,
+  type UploadTaskSummary,
+  type DemoCoverUpload,
+  UploadError,
+} from "@html-share/core";
 
 import { UploadAction, UploadTaskStatus, type PrismaClient } from "./generated/prisma/client.js";
 import {
@@ -26,6 +32,7 @@ export interface ProcessingUpload {
   tenantId: string;
   targetHtml: string;
   traceId?: string;
+  cover?: DemoCoverUpload & { expiresAt: Date };
   manifestDigest: string;
   declaredFileCount: number;
   declaredTotalSize: number;
@@ -52,12 +59,14 @@ export function createUploadRepository(
   options: UploadRepositoryOptions = {},
 ): UploadRepository & {
   claimNextProcessingUpload(now: Date): Promise<ProcessingUpload | null>;
-  publishUpload(input: { uploadId: string; now: Date }): Promise<boolean>;
+  publishUpload(input: UploadPublicationInput): Promise<boolean>;
   markUploadFilesVerified(input: { uploadId: string; now: Date }): Promise<void>;
   failUpload(input: { uploadId: string; failureCode: string; now: Date }): Promise<boolean>;
 } {
   return {
     prepare: (input) => prepareUpload(prisma, input, options),
+
+    prepareCover: (input) => prepareCoverUpload({ client: prisma, provider: "postgresql" }, input),
 
     async requestCompletion(input) {
       // Release unrelated expiry locks before taking the project lock for password results.
@@ -161,7 +170,9 @@ export function createUploadRepository(
         });
       });
       if (task === null) return null;
+      const cover = stagedCover(task);
       return {
+        ...(cover === undefined ? {} : { cover: { ...cover, expiresAt: task.expiresAt } }),
         action: task.action === UploadAction.CREATE ? "create" : "replace",
         declaredFileCount: task.declaredFileCount,
         declaredTotalSize: Number(task.declaredTotalSize),

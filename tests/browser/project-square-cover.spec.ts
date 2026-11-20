@@ -18,7 +18,6 @@ for (const [width, columns] of [
     const missing = "/api/square/projects/abc2/cover/missing";
     state.projects[0].cover = { status: "ready", path: ready };
     state.projects[2].cover = { status: "ready", path: missing };
-    state.projects[3].cover = { status: "failed" };
     await page.route(`**${ready}`, (route) =>
       route.fulfill({
         body: image,
@@ -47,6 +46,7 @@ for (const [width, columns] of [
     await expect(third.getByText("预览暂不可用")).toBeVisible();
     await expect(third.getByRole("link", { name: "查看内容" })).toBeVisible();
     await expect(fourth.getByText("预览暂不可用")).toBeVisible();
+    await expect(fourth.getByRole("link", { name: "查看内容" })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );

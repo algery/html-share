@@ -9,7 +9,7 @@ import { runPasswordAccessCleanup } from "./jobs/cleanup-password-access.js";
 import { runNextOrphanObjectSweep } from "./jobs/sweep-orphan-objects.js";
 import { finalizeNextUpload } from "./jobs/finalize-upload.js";
 import { runParallelFinalizers } from "./jobs/parallel-finalization.js";
-import { createSquareCoverJobs } from "./jobs/square-cover.js";
+import { createSquareCoverSweep } from "./jobs/square-cover-sweep.js";
 
 function loadEnvironment() {
   try {
@@ -88,6 +88,17 @@ const runJobs = async () => {
         result: await finalizeNextUpload({
           onOutcome: (outcome) => {
             uploadTraceId = outcome.traceId;
+            if (outcome.coverCheck !== "omitted") {
+              app.log.info(
+                {
+                  project_id: outcome.projectKey,
+                  revision: outcome.revisionNumber,
+                  cover_check: outcome.coverCheck,
+                  trace_id: outcome.traceId,
+                },
+                "square cover upload checked",
+              );
+            }
           },
           repository,
           storage,
@@ -165,31 +176,23 @@ timer.unref();
 void runJobs();
 
 const coverShutdown = new AbortController();
+const sweepSquareCovers = createSquareCoverSweep(repositories.squareCovers, objectStore);
 let coverRun: Promise<void> | undefined;
-let coverTimer: ReturnType<typeof setInterval> | undefined;
-if (environment.SQUARE_COVER_SOCKET) {
-  const covers = createSquareCoverJobs({
-    repository: repositories.squareCovers,
-    storage: objectStore,
-    socket: environment.SQUARE_COVER_SOCKET,
-    onResult: (event) => app.log.info(event, "square cover job finished"),
-  });
-  const runCovers = () => {
-    if (coverRun || coverShutdown.signal.aborted) return;
-    coverRun = repositories
-      .readiness()
-      .then(() => covers.tick(coverShutdown.signal))
-      .catch(() => {
-        if (!coverShutdown.signal.aborted) app.log.error("square cover job failed");
-      })
-      .finally(() => {
-        coverRun = undefined;
-      });
-  };
-  coverTimer = setInterval(runCovers, 2_000);
-  coverTimer.unref();
-  runCovers();
+function runCoverSweep() {
+  if (coverRun || coverShutdown.signal.aborted) return;
+  coverRun = repositories
+    .readiness()
+    .then(() => sweepSquareCovers(coverShutdown.signal))
+    .catch(() => {
+      if (!coverShutdown.signal.aborted) app.log.error("square cover cleanup failed");
+    })
+    .finally(() => {
+      coverRun = undefined;
+    });
 }
+const coverTimer = setInterval(runCoverSweep, 60_000);
+coverTimer.unref();
+runCoverSweep();
 
 app.addHook("onClose", async () => {
   clearInterval(timer);

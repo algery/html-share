@@ -1,3 +1,4 @@
+import { publishedCoverData, type UploadPublicationInput } from "../upload-cover.js";
 import type { MysqlClient } from "./types.js";
 import { mysqlTransaction } from "./transaction.js";
 import { publishPasswordData } from "./password-upload-policy.js";
@@ -13,7 +14,7 @@ import {
   UPLOAD_CLEANUP_GRACE_MS,
 } from "./upload-repository-maintenance.js";
 
-export function publishUpload(prisma: MysqlClient, input: { uploadId: string; now: Date }) {
+export function publishUpload(prisma: MysqlClient, input: UploadPublicationInput) {
   return mysqlTransaction(prisma, async (tx) => {
     const taskPointer = await tx.uploadTask.findUnique({
       select: { projectId: true, ownerUserId: true },
@@ -23,7 +24,8 @@ export function publishUpload(prisma: MysqlClient, input: { uploadId: string; no
     // Quota settlement uses the same owner lock as prepare, then project → task.
     await tx.$queryRaw`SELECT id FROM users WHERE id = ${taskPointer.ownerUserId} FOR UPDATE`;
     const lockedProject = await tx.$queryRaw<LockedProject[]>`
-      SELECT status, owner_user_id AS ownerUserId, current_revision_id AS currentRevisionId
+      SELECT status, owner_user_id AS ownerUserId, current_revision_id AS currentRevisionId,
+             homepage_path AS homepagePath
       FROM demo_projects
       WHERE id = ${taskPointer.projectId}
       FOR UPDATE
@@ -116,6 +118,15 @@ export function publishUpload(prisma: MysqlClient, input: { uploadId: string; no
       },
       where: { id: task.projectId },
     });
+    const cover = publishedCoverData(task, project.homepagePath, input, publicationNow);
+    const coverKey = { projectId: task.projectId };
+    if (cover === undefined) await tx.projectSquareCover.deleteMany({ where: coverKey });
+    else
+      await tx.projectSquareCover.upsert({
+        where: coverKey,
+        create: { ...coverKey, ...cover },
+        update: cover,
+      });
     await tx.quotaReservation.update({
       data: { settledAt: publicationNow, status: QuotaReservationStatus.SETTLED },
       where: { uploadTaskId: task.id },
@@ -202,6 +213,7 @@ export function failUpload(
 interface LockedProject {
   ownerUserId: string;
   currentRevisionId: string | null;
+  homepagePath: string | null;
   status: DemoProjectStatus;
 }
 

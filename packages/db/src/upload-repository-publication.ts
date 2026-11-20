@@ -1,3 +1,4 @@
+import { publishedCoverData, type UploadPublicationInput } from "./upload-cover.js";
 import { publishPasswordData } from "./password-upload-policy.js";
 import {
   DemoProjectStatus,
@@ -12,7 +13,7 @@ import {
   UPLOAD_CLEANUP_GRACE_MS,
 } from "./upload-repository-maintenance.js";
 
-export function publishUpload(prisma: PrismaClient, input: { uploadId: string; now: Date }) {
+export function publishUpload(prisma: PrismaClient, input: UploadPublicationInput) {
   return prisma.$transaction(async (tx) => {
     const taskPointer = await tx.uploadTask.findUnique({
       select: { ownerUserId: true, projectId: true },
@@ -23,7 +24,8 @@ export function publishUpload(prisma: PrismaClient, input: { uploadId: string; n
     // an active project. Keep the project -> task lock order used by deletion.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${taskPointer.ownerUserId}))`;
     const lockedProject = await tx.$queryRaw<LockedProject[]>`
-      SELECT "status", "current_revision_id" AS "currentRevisionId"
+      SELECT "status", "current_revision_id" AS "currentRevisionId",
+             "homepage_path" AS "homepagePath"
       FROM "demo_projects"
       WHERE "id" = ${taskPointer.projectId}::uuid
       FOR UPDATE
@@ -112,6 +114,15 @@ export function publishUpload(prisma: PrismaClient, input: { uploadId: string; n
       },
       where: { id: task.projectId },
     });
+    const cover = publishedCoverData(task, project.homepagePath, input, publicationNow);
+    const coverKey = { projectId: task.projectId };
+    if (cover === undefined) await tx.projectSquareCover.deleteMany({ where: coverKey });
+    else
+      await tx.projectSquareCover.upsert({
+        where: coverKey,
+        create: { ...coverKey, ...cover },
+        update: cover,
+      });
     await tx.quotaReservation.update({
       data: { settledAt: publicationNow, status: QuotaReservationStatus.SETTLED },
       where: { uploadTaskId: task.id },
@@ -197,6 +208,7 @@ export function failUpload(
 
 interface LockedProject {
   currentRevisionId: string | null;
+  homepagePath: string | null;
   status: DemoProjectStatus;
 }
 

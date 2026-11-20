@@ -1,6 +1,8 @@
 import type { PlatformUserIdentity } from "../auth/contracts.js";
 import {
+  MAX_DEMO_COVER_BYTES,
   UPLOAD_URL_TTL_MS,
+  type PrepareDemoCoverInput,
   type PrepareDemoUploadInput,
   type UploadRepository,
 } from "./contracts.js";
@@ -18,6 +20,21 @@ export function createUploadService(options: UploadServiceOptions) {
     async prepare(input: PrepareDemoUploadInput & { owner: PlatformUserIdentity }) {
       const normalized = normalizePrepareInput(input);
       return options.repository.prepare({ ...normalized, now: now(), owner: input.owner });
+    },
+
+    async prepareCover(input: PrepareDemoCoverInput) {
+      const homepagePath = normalizeRelativePath(input.homepagePath);
+      if (
+        !isUuid(input.uploadId) ||
+        !/\.html?$/i.test(homepagePath) ||
+        !Number.isInteger(input.size) ||
+        input.size < 1 ||
+        input.size > MAX_DEMO_COVER_BYTES ||
+        !/^[A-Za-z0-9+/]{21}[AQgw]==$/.test(input.contentMd5)
+      ) {
+        throw new UploadError("INVALID_UPLOAD_INPUT");
+      }
+      return options.repository.prepareCover({ ...input, homepagePath, now: now() });
     },
 
     complete(input: { ownerUserId: string; uploadId: string }) {

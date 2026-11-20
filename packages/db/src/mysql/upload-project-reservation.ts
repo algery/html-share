@@ -48,7 +48,8 @@ export async function findOwnedProject(tx: Transaction, projectKey: string, owne
       status,
       access_mode AS accessMode,
       password_hash AS passwordHash,
-      password_version AS passwordVersion
+      password_version AS passwordVersion,
+      homepage_path AS homepagePath
     FROM demo_projects
     WHERE project_key = ${projectKey}
     FOR UPDATE
@@ -68,6 +69,7 @@ export async function findOwnedProject(tx: Transaction, projectKey: string, owne
 }
 
 interface LockedOwnedProject {
+  homepagePath: string | null;
   accessMode: string;
   passwordHash: string | null;
   passwordVersion: number;

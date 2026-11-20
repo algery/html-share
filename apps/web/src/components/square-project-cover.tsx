@@ -18,11 +18,7 @@ export function SquareProjectCover({
   const cover = project.cover;
   const imageUrl = homepage && cover?.status === "ready" ? `${apiUrl}${cover.path}` : undefined;
   const showImage = imageUrl && failedImage !== imageUrl;
-  const label = !homepage
-    ? "暂无首页预览"
-    : cover?.status === "failed" || (imageUrl && failedImage === imageUrl)
-      ? "预览暂不可用"
-      : "正在生成预览";
+  const label = homepage ? "预览暂不可用" : "暂无首页预览";
 
   return (
     <div className="relative aspect-[8/5] rounded-t-lg bg-slate-100">

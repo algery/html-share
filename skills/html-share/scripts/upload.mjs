@@ -1,5 +1,6 @@
 import { createClientRequestId, isMainModule, parseArguments, redact } from "./common.mjs";
 import { uploadPreparedFiles } from "./direct-upload.mjs";
+import { uploadOptionalCover } from "./upload-cover.mjs";
 import { preflight } from "./preflight.mjs";
 import { mcpCall, requirePasswordCapabilities, withUploadRecovery } from "./mcp-client.mjs";
 import { passwordOptions, publicationResult, trustedDemoUrl } from "./password-options.mjs";
@@ -78,6 +79,14 @@ export async function publishDemo(input, dependencies = {}) {
         throw new Error("逐文件直传失败，请使用同一 client_request_id 重试。");
       }
       if (prepared.status === "prepared") {
+        await uploadOptionalCover(
+          { prepared, inspection, mcpUrl, token, requestTimeoutMs },
+          {
+            request,
+            uploadHostOverride: input.uploadHostOverride,
+            captureCover: dependencies.captureCover,
+          },
+        );
         try {
           await mcpCall(
             request,

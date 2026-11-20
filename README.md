@@ -54,13 +54,4 @@ pnpm db:test:compatibility
 
 ### 项目广场首页截图
 
-本地 Compose 可以叠加截图服务。使用 PostgreSQL 时选 `compose.yaml`，使用
-MySQL 时选 `compose.mysql.yaml`。继续使用当前部署的环境变量文件和 Compose 项目名。
-
-```bash
-docker compose -f compose.mysql.yaml -f compose.square-cover.yaml up -d --build
-```
-
-截图容器仅通过专用 Unix socket 接收当前 revision 的文件。容器没有网络、
-数据库或对象存储配置。启用后 Worker 会为既有共享项目分批生成封面，打开
-广场并重新加载可查看生成结果。目标部署环境须支持 Chromium 用户命名空间沙箱。
+发布 Skill 在本机截取有效首页并随 Demo 上传。项目上架时展示已保存的匹配截图，缺图时显示占位。客户端安装和旧截图服务退役步骤见 [项目广场封面](docs/project-square-cover.md)。

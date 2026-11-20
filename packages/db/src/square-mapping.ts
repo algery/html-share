@@ -155,28 +155,31 @@ function currentCover(
   homepage: string | null,
 ): SquareStoredCover | undefined {
   const { squareCover: row, currentRevisionId, tenantId, squareSettings } = project;
-  if (!homepage) return undefined;
   if (
+    !homepage ||
     !row ||
     !squareSettings ||
     !currentRevisionId ||
     row.tenantId !== tenantId ||
     row.revisionId !== currentRevisionId ||
     row.homepagePath !== homepage ||
-    row.targetHash !==
-      squareCoverTargetHash({
-        tenantId,
-        projectId: project.id,
-        revisionId: currentRevisionId,
-        homepagePath: homepage,
-        projectUpdatedAt: project.updatedAt,
-        settingsVersion: squareSettings.settingsVersion,
-      })
-  )
-    return { status: "pending" };
-  if (row.status === "ready" && row.privateImageKey)
-    return { status: "ready", targetHash: row.targetHash, privateImageKey: row.privateImageKey };
-  return { status: row.status === "failed" ? "failed" : "pending" };
+    row.status !== "ready" ||
+    !row.privateImageKey
+  ) {
+    return undefined;
+  }
+  return {
+    status: "ready",
+    privateImageKey: row.privateImageKey,
+    targetHash: squareCoverTargetHash({
+      tenantId,
+      projectId: project.id,
+      revisionId: currentRevisionId,
+      homepagePath: homepage,
+      projectUpdatedAt: project.updatedAt,
+      settingsVersion: squareSettings.settingsVersion,
+    }),
+  };
 }
 
 export function squareSettings(

@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import { resolveHomepage } from "../project/homepage.js";
+
 import {
   MAX_DEMOS_PER_USER,
   MAX_STORAGE_BYTES_PER_USER,
@@ -73,6 +75,7 @@ export class InMemoryUploadRepository implements UploadRepository {
     const task: StoredTask = {
       ...password,
       clientRequestId: input.clientRequestId,
+      coverHomepage: resolveHomepage(input.files.map((file) => file.relativePath)).path,
       requestFingerprint: requestFingerprint(input),
       createdAt: new Date(input.now),
       expiresAt: new Date(input.now.getTime() + UPLOAD_URL_TTL_MS),
@@ -93,6 +96,25 @@ export class InMemoryUploadRepository implements UploadRepository {
     this.projects.set(project.id, project);
     this.tasks.set(uploadId, task);
     return toPreparedUpload(task, false);
+  }
+
+  async prepareCover(input: Parameters<UploadRepository["prepareCover"]>[0]) {
+    const task = this.ownedTask(input);
+    if (task.status === "expired") throw new UploadError("UPLOAD_EXPIRED");
+    if (task.status !== "prepared" || task.coverHomepage !== input.homepagePath)
+      throw new UploadError("INVALID_UPLOAD_INPUT");
+    const existing = task.coverUpload;
+    if (existing && (existing.contentMd5 !== input.contentMd5 || existing.size !== input.size))
+      throw new UploadError("INVALID_UPLOAD_INPUT");
+    const { contentMd5, homepagePath, size } = input;
+    const cover = existing ?? {
+      contentMd5,
+      homepagePath,
+      size,
+      storageKey: `square-covers/${task.projectId}/${task.uploadId}.jpg`,
+    };
+    task.coverUpload = cover;
+    return { ...cover, expiresAt: task.expiresAt };
   }
 
   async requestCompletion(input: TaskInput): Promise<UploadTaskSummary> {

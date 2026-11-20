@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
@@ -7,11 +6,9 @@ import {
   createAuthSessionService,
   createMcpTokenService,
   createUploadService,
-  digestManifest,
   InMemoryAuthRepository,
   InMemoryMcpTokenRepository,
   InMemoryUploadRepository,
-  mimeForPath,
 } from "@html-share/core";
 import type { UploadService } from "@html-share/core";
 import { createSimulatorDingTalkClient } from "@html-share/dingtalk";
@@ -19,6 +16,14 @@ import type { ObjectStore } from "@html-share/storage";
 
 import { buildServerApp } from "./app.js";
 import { Phase4FakeStorage } from "./phase4-storage.test-helper.js";
+import {
+  coverArgs,
+  digestForWire,
+  filesFor,
+  manifestFile,
+  prepareArgs,
+  responseJson,
+} from "./phase4-manifest.test-helper.js";
 
 const HASH_SECRET = "phase-four-mcp-token-hash-secret-with-enough-length";
 const USER = { dingtalkUserId: "publisher", displayName: "Publisher", id: "publisher-1" };
@@ -58,6 +63,39 @@ describe("Phase 4 MCP upload tools", () => {
     expect(storage.signed[0]?.expiresInSeconds).toBeLessThanOrEqual(300);
     expect(second).toMatchObject({ idempotent: true, upload_id: first["upload_id"] });
     expect(JSON.stringify(first)).not.toContain("<html");
+    await client.close();
+  });
+
+  it("signs one optional JPEG per prepared upload and only reissues the same declaration", async () => {
+    const { client, storage } = await testClient(applications);
+    const prepared = responseJson(
+      await client.callTool({ arguments: prepareArgs(), name: "prepare_demo_upload" }),
+    );
+    expect(prepared["cover_homepage"]).toBe("index.html");
+    const args = coverArgs(prepared["upload_id"]);
+    const call = (arguments_: Record<string, unknown>) =>
+      client.callTool({ arguments: arguments_, name: "prepare_demo_cover" });
+
+    const cover = responseJson(await call(args));
+    expect(cover).toEqual({
+      upload_headers: {
+        "content-length": "10",
+        "content-md5": args.content_md5,
+        "content-type": "image/jpeg",
+      },
+      upload_url: expect.stringContaining(`/${prepared["upload_id"]}.jpg`),
+    });
+    expect(responseJson(await call(args))).toEqual(cover);
+    expect((await call({ ...args, size: 11 })).isError).toBe(true);
+    expect((await call({ ...args, homepage_path: "other.html" })).isError).toBe(true);
+    expect((await call({ ...args, size: 1024 * 1024 + 1 })).isError).toBe(true);
+    await client.callTool({
+      arguments: { upload_id: args.upload_id },
+      name: "complete_demo_upload",
+    });
+    expect((await call(args)).isError).toBe(true);
+    expect(storage.signed).toHaveLength(3);
+    expect(storage.signed[1]?.expiresInSeconds).toBeLessThanOrEqual(300);
     await client.close();
   });
 
@@ -125,6 +163,12 @@ describe("Phase 4 MCP upload tools", () => {
     });
     expect(response.isError).toBe(true);
     expect(responseJson(response)).toMatchObject({ error: "project_forbidden" });
+    const otherCover = await other.callTool({
+      arguments: coverArgs(created["upload_id"]),
+      name: "prepare_demo_cover",
+    });
+    expect(otherCover.isError).toBe(true);
+    expect(responseJson(otherCover)).toMatchObject({ error: "upload_not_found" });
     await owner.close();
     await other.close();
   });
@@ -193,6 +237,9 @@ function createApp(
 }
 
 const completedUploads: UploadService = {
+  async prepareCover() {
+    throw new Error("not used");
+  },
   async complete() {
     throw new Error("not used");
   },
@@ -227,50 +274,4 @@ async function connect(address: string, token: string) {
     }),
   );
   return client;
-}
-
-function prepareArgs(overrides: Record<string, unknown> = {}) {
-  const files = filesFor("demo");
-  return {
-    action: "create",
-    client_request_id: "d290f1ee-6c54-4b01-90e6-d701748f0851",
-    display_name: "Demo",
-    files,
-    manifest_digest: digestForWire(files),
-    target_html: "index.html",
-    ...overrides,
-  };
-}
-
-function filesFor(contents: string) {
-  return [manifestFile("index.html", contents)];
-}
-
-function manifestFile(relativePath: string, contents: string) {
-  const source = Buffer.from(contents);
-  return {
-    content_md5: createHash("md5").update(source).digest("base64"),
-    mime_type: mimeForPath(relativePath),
-    relative_path: relativePath,
-    sha256: createHash("sha256").update(source).digest("hex"),
-    size: source.length,
-  };
-}
-
-function digestForWire(files: ReturnType<typeof manifestFile>[]) {
-  return digestManifest(
-    files.map((file) => ({
-      contentMd5: file.content_md5,
-      mimeType: file.mime_type,
-      relativePath: file.relative_path,
-      sha256: file.sha256,
-      size: file.size,
-    })),
-  );
-}
-
-function responseJson(response: { content: { type: string; text?: string }[] }) {
-  const text = response.content.find((item) => item.type === "text")?.text;
-  if (text === undefined) throw new Error("missing MCP text result");
-  return JSON.parse(text) as Record<string, unknown>;
 }

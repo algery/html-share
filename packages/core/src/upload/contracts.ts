@@ -1,6 +1,8 @@
 import type { PlatformUserIdentity } from "../auth/contracts.js";
 
 export const MAX_DEMO_FILES = 500;
+export const MAX_DEMO_COVER_BYTES = 1024 * 1024;
+export const DEMO_COVER_MIME = "image/jpeg";
 export const MAX_DEMO_FILE_BYTES = 5 * 1024 * 1024;
 export const MAX_DEMO_TOTAL_BYTES = 20 * 1024 * 1024;
 export const MAX_DEMOS_PER_USER = 100;
@@ -50,9 +52,25 @@ export interface PreparedUpload {
   projectId: string;
   revisionNumber: number;
   files: readonly PreparedUploadFile[];
+  coverHomepage?: string | null;
   expiresAt: Date;
   idempotent: boolean;
   status: "prepared" | "processing" | "completed";
+}
+
+export interface DemoCoverDeclaration {
+  homepagePath: string;
+  contentMd5: string;
+  size: number;
+}
+
+export interface DemoCoverUpload extends DemoCoverDeclaration {
+  storageKey: string;
+}
+
+export interface PrepareDemoCoverInput extends DemoCoverDeclaration {
+  ownerUserId: string;
+  uploadId: string;
 }
 
 export interface UploadTaskSummary {
@@ -70,6 +88,9 @@ export interface UploadRepository {
   prepare(
     input: ValidatedPrepareDemoUploadInput & { owner: PlatformUserIdentity; now: Date },
   ): Promise<PreparedUpload>;
+  prepareCover(
+    input: PrepareDemoCoverInput & { now: Date },
+  ): Promise<DemoCoverUpload & { expiresAt: Date }>;
   requestCompletion(input: {
     ownerUserId: string;
     uploadId: string;

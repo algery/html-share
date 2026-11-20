@@ -36,14 +36,15 @@ export async function uploadPreparedFiles(input, dependencies = {}) {
         const job = jobs[next];
         next += 1;
         if (job === undefined) return;
-        if (!(await uploadOneFile(job, input.timeoutMs, dependencies, request))) failed = true;
+        if (!(await uploadOneFile(job, input.timeoutMs, { ...dependencies, request })))
+          failed = true;
       }
     }),
   );
   return !failed;
 }
 
-async function uploadOneFile(job, timeoutMs, dependencies, request) {
+async function uploadOneFile(job, timeoutMs, dependencies) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if ((await realpath(job.snapshot.logicalPath).catch(() => null)) !== job.snapshot.sourcePath) {
       throw new SnapshotChangedError();
@@ -52,11 +53,7 @@ async function uploadOneFile(job, timeoutMs, dependencies, request) {
     try {
       await verifySnapshot(handle, job.snapshot);
       const body = handle.createReadStream({ autoClose: false, start: 0 });
-      const uploaded =
-        dependencies.uploadHostOverride === undefined
-          ? await putWithFetch(request, job.upload, body, timeoutMs)
-          : await putWithHostOverride(job.upload, body, dependencies.uploadHostOverride, timeoutMs);
-      if (uploaded) return true;
+      if (await putPreparedBody(job.upload, body, timeoutMs, dependencies)) return true;
     } catch (error) {
       if (error instanceof SnapshotChangedError) throw error;
     } finally {
@@ -92,26 +89,28 @@ async function verifySnapshot(handle, snapshot) {
   }
 }
 
-async function putWithFetch(request, upload, body, timeoutMs) {
+export async function putPreparedBody(upload, body, timeoutMs, dependencies) {
+  const signal = AbortSignal.timeout(timeoutMs);
   try {
-    const response = await requestWithTimeout(
-      request,
-      upload.upload_url,
-      {
-        body,
-        duplex: "half",
-        headers: upload.upload_headers,
-        method: "PUT",
-      },
-      timeoutMs,
-    );
+    if (dependencies.uploadHostOverride !== undefined) {
+      return await putWithHostOverride(upload, body, dependencies.uploadHostOverride, signal);
+    }
+    const response = await dependencies.request(upload.upload_url, {
+      body,
+      duplex: "half",
+      headers: upload.upload_headers,
+      method: "PUT",
+      redirect: "error",
+      signal,
+    });
+    void response.body?.cancel().catch(() => {});
     return response.ok;
   } catch {
     return false;
   }
 }
 
-function putWithHostOverride(upload, body, hostname, timeoutMs) {
+function putWithHostOverride(upload, body, hostname, signal) {
   const original = new URL(upload.upload_url);
   const transport = original.protocol === "https:" ? httpsRequest : httpRequest;
   return new Promise((resolveUpload, reject) => {
@@ -123,31 +122,20 @@ function putWithHostOverride(upload, body, hostname, timeoutMs) {
         path: original.pathname + original.search,
         port: original.port,
         protocol: original.protocol,
+        signal,
       },
       (response) => {
-        response.resume();
+        response.on("error", reject);
         response.on("end", () =>
           resolveUpload((response.statusCode ?? 500) >= 200 && (response.statusCode ?? 500) < 300),
         );
+        response.resume();
       },
     );
-    outgoing.setTimeout(timeoutMs, () => outgoing.destroy(new Error("逐文件直传超时。")));
     outgoing.on("error", reject);
-    body.on("error", reject).pipe(outgoing);
+    if (Buffer.isBuffer(body)) outgoing.end(body);
+    else body.on("error", (error) => outgoing.destroy(error)).pipe(outgoing);
   });
-}
-
-async function requestWithTimeout(request, url, init, timeoutMs) {
-  const controller = new globalThis.AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await request(url, { ...init, signal: controller.signal });
-  } catch (error) {
-    if (controller.signal.aborted) throw new Error("请求超时。");
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 function isStringRecord(value) {

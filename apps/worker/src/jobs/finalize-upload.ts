@@ -1,19 +1,33 @@
-import { digestManifest } from "@html-share/core";
+import { DEMO_COVER_MIME, digestManifest } from "@html-share/core";
 import type { ProcessingUpload } from "@html-share/db";
 import type { ObjectStore } from "@html-share/storage";
 
 export interface UploadFinalizerRepository {
   claimNextProcessingUpload(now: Date): Promise<ProcessingUpload | null>;
-  publishUpload(input: { uploadId: string; now: Date }): Promise<boolean>;
+  publishUpload(input: {
+    uploadId: string;
+    now: Date;
+    verifiedCoverKey?: string;
+  }): Promise<boolean>;
   markUploadFilesVerified(input: { uploadId: string; now: Date }): Promise<void>;
   failUpload(input: { uploadId: string; failureCode: string; now: Date }): Promise<boolean>;
 }
 
 const DEFAULT_HEAD_OBJECT_TIMEOUT_MS = 10_000;
 const HEAD_OBJECT_CONCURRENCY = 20;
+const COVER_HEAD_TIMEOUT_MS = 2_000;
+const COVER_PUBLICATION_MARGIN_MS = 5_000;
+
+type CoverCheck = "omitted" | "verified" | "missing" | "mismatch" | "unavailable";
 
 export async function finalizeNextUpload(input: {
-  onOutcome?: (outcome: { status: "published" | "failed"; traceId?: string }) => void;
+  onOutcome?: (outcome: {
+    status: "published" | "failed";
+    projectKey: string;
+    revisionNumber: number;
+    coverCheck: CoverCheck;
+    traceId?: string;
+  }) => void;
   repository: UploadFinalizerRepository;
   storage: ObjectStore;
   now?: () => Date;
@@ -27,9 +41,10 @@ export async function finalizeNextUpload(input: {
   const task = await input.repository.claimNextProcessingUpload(now());
   if (task === null) return "idle";
   let outcome: "published" | "failed" = "failed";
+  let coverCheck: CoverCheck = task.cover === undefined ? "omitted" : "unavailable";
   try {
     validateTaskManifest(task);
-    await mapWithConcurrency(task.files, HEAD_OBJECT_CONCURRENCY, async (file) => {
+    const verifyFiles = mapWithConcurrency(task.files, HEAD_OBJECT_CONCURRENCY, async (file) => {
       const metadata = await headObjectWithTimeout(
         input.storage,
         file.storageKey,
@@ -44,10 +59,18 @@ export async function finalizeNextUpload(input: {
         throw new FinalizeError("UPLOAD_OBJECT_CONTENT_MD5_MISMATCH");
       }
     });
+    const [, coverResult] = await Promise.all([
+      verifyFiles,
+      checkCover(input.storage, task.cover, now(), headObjectTimeoutMs),
+    ]);
+    coverCheck = coverResult;
     await input.repository.markUploadFilesVerified({ now: now(), uploadId: task.uploadId });
     const publicationCommitted = await input.repository.publishUpload({
       now: now(),
       uploadId: task.uploadId,
+      ...(coverCheck === "verified" && task.cover
+        ? { verifiedCoverKey: task.cover.storageKey }
+        : {}),
     });
     if (!publicationCommitted) throw new FinalizeError("PUBLISH_NOT_APPLIED");
     outcome = "published";
@@ -64,8 +87,37 @@ export async function finalizeNextUpload(input: {
   } finally {
     input.onOutcome?.({
       status: outcome,
+      projectKey: task.projectKey,
+      revisionNumber: task.revisionNumber,
+      coverCheck,
       ...(task.traceId === undefined ? {} : { traceId: task.traceId }),
     });
+  }
+}
+
+async function checkCover(
+  storage: ObjectStore,
+  cover: ProcessingUpload["cover"],
+  now: Date,
+  headObjectTimeoutMs: number,
+): Promise<CoverCheck> {
+  if (!cover) return "omitted";
+  const timeout = Math.min(
+    COVER_HEAD_TIMEOUT_MS,
+    headObjectTimeoutMs,
+    cover.expiresAt.getTime() - now.getTime() - COVER_PUBLICATION_MARGIN_MS,
+  );
+  if (timeout < 1) return "unavailable";
+  try {
+    const metadata = await headObjectWithTimeout(storage, cover.storageKey, timeout);
+    if (!metadata) return "missing";
+    return metadata.size === cover.size &&
+      metadata.contentType === DEMO_COVER_MIME &&
+      metadata.contentMd5 === cover.contentMd5
+      ? "verified"
+      : "mismatch";
+  } catch {
+    return "unavailable";
   }
 }
 

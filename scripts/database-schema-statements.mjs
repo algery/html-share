@@ -121,6 +121,10 @@ export function unsupportedPostgresIdentityTail(sql) {
       ["feishu_identities", "account_contacts"].includes(statement[8]);
     const dingtalkNullable =
       statement.join(" ") === "alter table users alter column dingtalk_user_id drop not null";
+    const uploadCoverChange = [
+      "alter table upload_tasks add column cover_homepage_path text , add column cover_content_md5 varchar ( 24 ) , add column cover_size integer , add column cover_storage_key varchar ( 191 )",
+      "create index upload_tasks_cover_storage_key_idx on upload_tasks ( cover_storage_key )",
+    ].includes(statement.join(" "));
     if (
       !create &&
       !insert &&
@@ -129,7 +133,8 @@ export function unsupportedPostgresIdentityTail(sql) {
       !unionColumn &&
       !tokenExpiry &&
       !feishuUniqueIndex &&
-      !dingtalkNullable
+      !dingtalkNullable &&
+      !uploadCoverChange
     )
       issues.push("Unsupported statement after PostgreSQL identity migration");
   }

@@ -1,3 +1,4 @@
+import { effectiveUploadHomepage } from "./upload-cover.js";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -47,7 +48,7 @@ export async function prepareUpload(
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.owner.id}))`;
       const existing = await tx.uploadTask.findFirst({
         include: {
-          project: { select: { projectKey: true } },
+          project: { select: { projectKey: true, homepagePath: true } },
           revision: { select: { revisionNumber: true } },
           uploadFiles: true,
         },
@@ -60,15 +61,15 @@ export async function prepareUpload(
       });
       if (existing !== null) assertSameUploadRequest(existing, input);
       if (existing?.status === UploadTaskStatus.COMPLETED)
-        return toPrepared(existing, existing.project.projectKey, true, "completed");
+        return toPrepared(existing, existing.project, true, "completed");
       if (existing?.status === UploadTaskStatus.PROCESSING)
-        return toPrepared(existing, existing.project.projectKey, true, "processing");
+        return toPrepared(existing, existing.project, true, "processing");
       if (
         existing !== null &&
         existing.status !== UploadTaskStatus.EXPIRED &&
         existing.status !== UploadTaskStatus.FAILED
       ) {
-        return toPrepared(existing, existing.project.projectKey, true, "prepared");
+        return toPrepared(existing, existing.project, true, "prepared");
       }
       // Failed/expired creates released their reservation. Reusing the pending
       // project must reserve quota again under the same owner advisory lock.
@@ -138,7 +139,7 @@ export async function prepareUpload(
           userId: input.owner.id,
         },
       });
-      return toPrepared(task, project.projectKey, false, "prepared");
+      return toPrepared(task, project, false, "prepared");
     });
   } catch (error) {
     if (isUniqueViolation(error)) throw new UploadError("PROJECT_UPLOAD_CONFLICT");
@@ -208,7 +209,8 @@ async function findOwnedProject(tx: Transaction, projectKey: string, ownerUserId
       "status",
       "access_mode" AS "accessMode",
       "password_hash" AS "passwordHash",
-      "password_version" AS "passwordVersion"
+      "password_version" AS "passwordVersion",
+      "homepage_path" AS "homepagePath"
     FROM "demo_projects"
     WHERE "project_key" = ${projectKey}
     FOR UPDATE
@@ -228,6 +230,7 @@ async function findOwnedProject(tx: Transaction, projectKey: string, ownerUserId
 }
 
 interface LockedOwnedProject {
+  homepagePath: string | null;
   accessMode: string;
   passwordHash: string | null;
   passwordVersion: number;
@@ -242,6 +245,7 @@ function toPrepared(
   task: {
     id: string;
     expiresAt: Date;
+    coverHomepagePath: string | null;
     revision: { revisionNumber: number };
     uploadFiles: readonly {
       expectedContentMd5: string;
@@ -252,11 +256,16 @@ function toPrepared(
       storageKey: string;
     }[];
   },
-  projectId: string,
+  project: { projectKey: string; homepagePath: string | null },
   idempotent: boolean,
   status: PreparedUpload["status"],
 ): PreparedUpload {
   return {
+    coverHomepage: effectiveUploadHomepage(
+      task.uploadFiles,
+      project.homepagePath,
+      task.coverHomepagePath,
+    ),
     expiresAt: task.expiresAt,
     files: task.uploadFiles.map((file) => ({
       contentMd5: file.expectedContentMd5,
@@ -267,7 +276,7 @@ function toPrepared(
       storageKey: file.storageKey,
     })),
     idempotent,
-    projectId,
+    projectId: project.projectKey,
     revisionNumber: task.revision.revisionNumber,
     status,
     uploadId: task.id,

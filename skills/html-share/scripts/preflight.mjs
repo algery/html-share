@@ -156,7 +156,9 @@ async function addFile(root, location, sourcePath, details, files, blocks) {
   const hashes = await hashFile(sourcePath);
   files.push({
     contentMd5: hashes.contentMd5,
+    dev: details.dev,
     hash: hashes.sha256,
+    ino: details.ino,
     logicalPath: location,
     mimeType: mimeForPath(path),
     path,

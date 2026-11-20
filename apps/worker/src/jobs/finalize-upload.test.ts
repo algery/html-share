@@ -1,15 +1,12 @@
-import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 
-import { digestManifest } from "@html-share/core";
 import type { ProcessingUpload } from "@html-share/db";
-import type { ObjectStore } from "@html-share/storage";
 
-import { finalizeNextUpload, type UploadFinalizerRepository } from "./finalize-upload.js";
+import { finalizeNextUpload } from "./finalize-upload.js";
+import { createTask, FakeRepository, FakeStorage } from "./finalize-upload.test-helper.js";
 
 describe("finalizeNextUpload", () => {
   it("has no body-read, archive, extraction, or local temporary-file code path", async () => {
@@ -77,6 +74,42 @@ describe("finalizeNextUpload", () => {
     },
   );
 
+  it.each([
+    [undefined, "verified"],
+    ["missing", "missing"],
+    ["size", "mismatch"],
+    ["type", "mismatch"],
+    ["md5", "mismatch"],
+    ["timeout", "unavailable"],
+  ] as const)("publishes the Demo when cover verification yields %s", async (failure, check) => {
+    const cover = {
+      expiresAt: new Date(Date.now() + 60_000),
+      homepagePath: "index.html",
+      contentMd5: "kAFQmDzST7DWlj99KOF/cg==",
+      size: 200,
+      storageKey: "square-covers/project/upload.jpg",
+    };
+    const task = createTask({ cover });
+    const repository = new FakeRepository(task);
+    const storage = new FakeStorage(task, undefined, failure);
+    const outcomes: string[] = [];
+
+    await expect(
+      finalizeNextUpload({
+        headObjectTimeoutMs: 10,
+        onOutcome: ({ coverCheck }) => outcomes.push(coverCheck),
+        repository,
+        storage,
+      }),
+    ).resolves.toBe("published");
+
+    expect(storage.headKeys).toContain(cover.storageKey);
+    expect(storage.getCalls).toBe(0);
+    expect(outcomes).toEqual([check]);
+    expect(repository.verifiedCoverKey).toBe(failure === undefined ? cover.storageKey : undefined);
+    expect(repository.currentRevisionId).toBe("new-revision");
+  });
+
   it("rejects declaration, target, and manifest drift before any object call", async () => {
     const base = createTask();
     const cases: [ProcessingUpload, string][] = [
@@ -125,137 +158,14 @@ describe("finalizeNextUpload", () => {
       repository: new FakeRepository(task),
       storage: new FakeStorage(task),
     });
-    expect(outcomes).toEqual([{ status: "published", traceId: "trace-upload-chain" }]);
+    expect(outcomes).toEqual([
+      {
+        coverCheck: "omitted",
+        projectKey: task.projectKey,
+        revisionNumber: task.revisionNumber,
+        status: "published",
+        traceId: "trace-upload-chain",
+      },
+    ]);
   });
 });
-
-class FakeRepository implements UploadFinalizerRepository {
-  currentRevisionId = "old-revision";
-  failed: string | null = null;
-  published = false;
-  verified = false;
-
-  constructor(
-    private task: ProcessingUpload | null,
-    private readonly publishResult = true,
-  ) {}
-
-  async claimNextProcessingUpload() {
-    const claimed = this.task;
-    this.task = null;
-    return claimed;
-  }
-
-  async failUpload(input: { failureCode: string }) {
-    this.failed = input.failureCode;
-    return true;
-  }
-
-  async markUploadFilesVerified() {
-    this.verified = true;
-  }
-
-  async publishUpload() {
-    if (!this.publishResult) return false;
-    this.published = true;
-    this.currentRevisionId = "new-revision";
-    return true;
-  }
-}
-
-type Failure = "md5" | "missing" | "size" | "timeout" | "type";
-
-class FakeStorage implements ObjectStore {
-  getCalls = 0;
-  headKeys: string[] = [];
-  deletedBatches: string[][] = [];
-
-  constructor(
-    private readonly task: ProcessingUpload | null,
-    private readonly failure?: Failure,
-  ) {}
-
-  async createPresignedUpload() {
-    return { headers: {}, url: "https://storage.test/upload" };
-  }
-
-  async deleteObjects(keys: readonly string[]) {
-    this.deletedBatches.push([...keys]);
-  }
-
-  async ensurePrivateBucket() {
-    return undefined;
-  }
-
-  async getObject() {
-    this.getCalls += 1;
-    return Readable.from([]);
-  }
-
-  async headObject(key: string, options?: { abortSignal?: AbortSignal }) {
-    this.headKeys.push(key);
-    if (this.failure === "timeout") {
-      await new Promise<never>((_resolve, reject) => {
-        options?.abortSignal?.addEventListener(
-          "abort",
-          () => reject(new Error("head request aborted")),
-          { once: true },
-        );
-      });
-    }
-    if (this.failure === "missing") return null;
-    const file = this.task?.files.find((candidate) => candidate.storageKey === key);
-    if (file === undefined) return null;
-    return {
-      contentMd5: this.failure === "md5" ? "AAAAAAAAAAAAAAAAAAAAAA==" : file.contentMd5,
-      contentType: this.failure === "type" ? "text/plain" : file.mimeType,
-      size: this.failure === "size" ? file.size + 1 : file.size,
-    };
-  }
-
-  async listObjects() {
-    return { keys: [] };
-  }
-}
-
-function createTask(overrides: Partial<ProcessingUpload> = {}): ProcessingUpload {
-  const files = [file("index.html", "new demo"), file("style.css", "body{}")];
-  return {
-    action: "replace",
-    declaredFileCount: files.length,
-    declaredTotalSize: files.reduce((sum, current) => sum + current.size, 0),
-    files,
-    manifestDigest: digestManifest(
-      files.map((current) => ({
-        contentMd5: current.contentMd5,
-        mimeType: current.mimeType,
-        relativePath: current.path,
-        sha256: current.contentHash,
-        size: current.size,
-      })),
-    ),
-    ownerUserId: "owner",
-    projectId: "project",
-    projectKey: "abc12",
-    revisionId: "revision",
-    revisionNumber: 2,
-    targetHtml: "index.html",
-    tenantId: "tenant",
-    uploadId: "upload",
-    ...overrides,
-  };
-}
-
-function file(path: string, contents: string) {
-  const source = Buffer.from(contents);
-  const mimeType = path.endsWith(".css") ? "text/css; charset=utf-8" : "text/html; charset=utf-8";
-  return {
-    contentHash: createHash("sha256").update(source).digest("hex"),
-    contentMd5: createHash("md5").update(source).digest("base64"),
-    id: `file-${path}`,
-    mimeType,
-    path,
-    size: source.length,
-    storageKey: `projects/abc12/revisions/2/${path}`,
-  };
-}

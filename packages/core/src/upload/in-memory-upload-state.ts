@@ -2,6 +2,7 @@ import type { createPasswordCrypto } from "../access/password-crypto.js";
 import {
   UPLOAD_IDEMPOTENCY_TTL_MS,
   type DemoAccessMode,
+  type DemoCoverUpload,
   type PreparedUpload,
   type UploadRepository,
   type UploadTaskStatus,
@@ -25,6 +26,7 @@ export interface StoredProject {
 }
 
 export interface StoredTask extends Omit<PreparedUpload, "status"> {
+  coverUpload?: DemoCoverUpload;
   clientRequestId: string;
   requestFingerprint: string;
   ownerUserId: string;
@@ -138,6 +140,7 @@ export function taskSummary(
 
 export function toPreparedUpload(task: StoredTask, idempotent: boolean): PreparedUpload {
   return {
+    coverHomepage: task.coverHomepage ?? null,
     expiresAt: task.expiresAt,
     files: task.files,
     idempotent,

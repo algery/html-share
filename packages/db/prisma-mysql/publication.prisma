@@ -110,6 +110,10 @@ model UploadTask {
   status                   UploadTaskStatus  @default(PREPARED)
   displayName              String            @map("display_name") @db.VarChar(80)
   targetHtml               String            @map("target_html") @db.LongText
+  coverHomepagePath       String?           @map("cover_homepage_path") @db.LongText
+  coverContentMd5          String?           @map("cover_content_md5") @db.VarChar(24)
+  coverSize                Int?              @map("cover_size")
+  coverStorageKey          String?           @map("cover_storage_key") @db.VarChar(191)
   declaredFileCount        Int               @map("declared_file_count")
   declaredTotalSize        BigInt            @map("declared_total_size")
   declaredArchiveSize      BigInt?           @map("declared_archive_size")
@@ -149,6 +153,7 @@ model UploadTask {
   @@index([status, expiresAt])
   @@index([projectId, status])
   @@index([passwordResultExpiresAt])
+  @@index([coverStorageKey])
   @@map("upload_tasks")
 }
 

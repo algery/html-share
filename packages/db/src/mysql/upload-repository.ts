@@ -1,8 +1,9 @@
+import { prepareCoverUpload, stagedCover, type UploadPublicationInput } from "../upload-cover.js";
 import type { MysqlClient } from "./types.js";
 import { mysqlTransaction } from "./transaction.js";
 import { claimableUploadId } from "./upload-claim.js";
 import { publishedAccessResult } from "./password-upload-policy.js";
-import type { UploadRepositoryOptions } from "../upload-repository.js";
+import type { ProcessingUpload, UploadRepositoryOptions } from "../upload-repository.js";
 import { type UploadRepository, type UploadTaskSummary, UploadError } from "@html-share/core";
 
 import { UploadAction, UploadTaskStatus } from "../generated/prisma-mysql/client.js";
@@ -19,42 +20,19 @@ import {
   publishUpload,
 } from "./upload-repository-publication.js";
 
-export interface ProcessingUpload {
-  uploadId: string;
-  projectId: string;
-  projectKey: string;
-  revisionId: string;
-  revisionNumber: number;
-  ownerUserId: string;
-  tenantId: string;
-  targetHtml: string;
-  traceId?: string;
-  manifestDigest: string;
-  declaredFileCount: number;
-  declaredTotalSize: number;
-  files: readonly {
-    id: string;
-    path: string;
-    size: number;
-    contentHash: string;
-    contentMd5: string;
-    mimeType: string;
-    storageKey: string;
-  }[];
-  action: "create" | "replace";
-}
-
 export function createMysqlUploadRepository(
   prisma: MysqlClient,
   options: UploadRepositoryOptions = {},
 ): UploadRepository & {
   claimNextProcessingUpload(now: Date): Promise<ProcessingUpload | null>;
-  publishUpload(input: { uploadId: string; now: Date }): Promise<boolean>;
+  publishUpload(input: UploadPublicationInput): Promise<boolean>;
   markUploadFilesVerified(input: { uploadId: string; now: Date }): Promise<void>;
   failUpload(input: { uploadId: string; failureCode: string; now: Date }): Promise<boolean>;
 } {
   return {
     prepare: (input) => prepareUpload(prisma, input, options),
+
+    prepareCover: (input) => prepareCoverUpload({ client: prisma, provider: "mysql" }, input),
 
     async requestCompletion(input) {
       // Release unrelated expiry locks before taking the project lock for password results.
@@ -139,7 +117,9 @@ export function createMysqlUploadRepository(
         });
       });
       if (task === null) return null;
+      const cover = stagedCover(task);
       return {
+        ...(cover === undefined ? {} : { cover: { ...cover, expiresAt: task.expiresAt } }),
         action: task.action === UploadAction.CREATE ? "create" : "replace",
         declaredFileCount: task.declaredFileCount,
         declaredTotalSize: Number(task.declaredTotalSize),

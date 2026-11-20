@@ -52,6 +52,8 @@ export {
   type McpTokenService,
 } from "./token/token-service.js";
 export {
+  DEMO_COVER_MIME,
+  MAX_DEMO_COVER_BYTES,
   MAX_DEMO_FILE_BYTES,
   MAX_DEMO_FILES,
   MAX_DEMO_TOTAL_BYTES,
@@ -59,7 +61,9 @@ export {
   MAX_STORAGE_BYTES_PER_USER,
   UPLOAD_IDEMPOTENCY_TTL_MS,
   UPLOAD_URL_TTL_MS,
+  type DemoCoverUpload,
   type FileManifestItem,
+  type PrepareDemoCoverInput,
   type PrepareDemoUploadInput,
   type PreparedUpload,
   type PreparedUploadFile,

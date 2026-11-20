@@ -15,19 +15,21 @@ description: 将明确指定的本地静态 HTML Demo 发布到 demo share，或
 
 运行本包内的 scripts/preflight.mjs，只读取目录。读取完整 JSON，不要把文件正文放入对话。
 
-    node "$SKILL_DIR/scripts/preflight.mjs" --publish-dir "<目录>" --target-html "<目录内的入口.html>"
+    node "$SKILL_DIR/scripts/preflight.mjs" --publish-dir "<目录>" --target-html "index.html"
 
 - status=blocked：列出 blocks 的编号、路径与建议，停止；不得调用 MCP 或上传，即使用户要求强制继续。
 - status=confirmation_required：列出全部 risks 的编号、路径、后果与建议。仅在用户明确确认“继续发布本次全部风险”后继续，并保存本次输出的 riskAckDigest。不要接受模糊的“好/继续”。
 - status=ready：无需额外确认。
 
-风险编号和用户文案见 references/risk-catalog.md。任何重新预检得到不同的 manifestDigest 或 riskAckDigest 都表示确认失效，必须重新询问。
+将示例中的 `index.html` 替换成相对于发布目录的入口路径，例如 `pages/home.html`。风险编号和用户文案见 references/risk-catalog.md。任何重新预检得到不同的 manifestDigest 或 riskAckDigest 都表示确认失效，必须重新询问。
 
 ## 发布流程
 
 标准路径使用一个 upload.mjs 进程完成 check_connection、逐文件清单 prepare_demo_upload、原文件精确预签名 PUT、complete_demo_upload 和最终状态查询。脚本不创建 ZIP、不复制正文到临时目录，并在每次 PUT 前复核文件快照；将 Token 仅作为本机环境变量 HTML_SHARE_MCP_TOKEN 提供，不要粘贴到对话、命令参数或项目文件。
 
-    HTML_SHARE_MCP_TOKEN="<本机已保存的 Token>" node "<本 Skill scripts/upload.mjs 的绝对路径>" --action create --publish-dir "<目录>" --target-html "<入口.html>" --display-name "<展示名>" --mcp-url "<app_url>/mcp" --demo-url "<demo_url>"
+    HTML_SHARE_MCP_TOKEN="<本机已保存的 Token>" node "<本 Skill scripts/upload.mjs 的绝对路径>" --action create --publish-dir "<目录>" --target-html "index.html" --display-name "<展示名>" --mcp-url "<app_url>/mcp" --demo-url "<demo_url>"
+
+有可用首页时，脚本会在预检通过、必要风险已确认、文件直传成功之后，按服务端返回的首页路径截取本地首屏。截图使用独立 Chromium 进程，只以本次预检文件为页面资源，不连接外部或本机站点，也不使用原浏览器会话。截图为 960×600 JPEG，签名后直接传到私有对象存储。缺少截图环境、截取超时、页面依赖无法访问的资源、上传失败或旧服务未返回可截取首页时，Demo 正常发布，广场在缺图时显示占位。
 
 有软风险时，加上本次预检返回的 --risk-ack-digest；覆盖时使用 --action replace --project-id "<5 位标识或原链接>"。脚本使用同一个 client_request_id 重试短时签名地址，不会创建第二个项目；只在服务端终态为 completed 时输出准确链接。
 
@@ -72,5 +74,14 @@ description: 将明确指定的本地静态 HTML Demo 发布到 demo share，或
 
 - Codex：将本包的 html-share/ 目录安装到 ~/.codex/skills/html-share/ 后重新打开 Codex。
 - Claude Code：将同一目录安装到项目 .claude/skills/html-share/ 或用户 ~/.claude/skills/html-share/。
+
+### 可选的本地截图环境
+
+Codex 和 Claude Code 共用同一份 Playwright Chromium。需要封面时，可在独立目录执行一次安装。以下是 macOS 和 Linux 命令：
+
+    npm install --prefix "$HOME/.html-share-cover" --save-exact playwright@1.62.1
+    PLAYWRIGHT_BROWSERS_PATH=0 "$HOME/.html-share-cover/node_modules/.bin/playwright" install --only-shell chromium
+
+请在具备 Chromium 系统依赖并支持 Chromium 沙箱的环境中运行。若组织已单独安装 Playwright，可通过 `HTML_SHARE_COVER_RUNTIME` 指定其安装目录的绝对路径，通过 `PLAYWRIGHT_BROWSERS_PATH` 指定 Chromium 缓存的绝对路径。默认使用独立安装目录内的浏览器。发布脚本不会自动安装或下载组件，沙箱无法启动时跳过截图。
 
 两端 MCP 都使用 Streamable HTTP 地址 <app_url>/mcp 和自定义 Header Authorization: Bearer <Token>。Token 只放在宿主配置，不写入 SKILL、脚本、日志或项目文件。

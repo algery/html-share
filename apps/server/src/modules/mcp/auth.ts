@@ -57,6 +57,9 @@ export function createUploadToolRateLimiter(options?: {
     consumeComplete(uploadId: string) {
       return consume(entries, `complete:${uploadId}`, now(), completeMaximum);
     },
+    consumeCover(userId: string) {
+      return consume(entries, `cover:${userId}`, now(), prepareMaximum);
+    },
     consumePrepare(userId: string) {
       return consume(entries, `prepare:${userId}`, now(), prepareMaximum);
     },

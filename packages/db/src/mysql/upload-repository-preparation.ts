@@ -1,3 +1,4 @@
+import { effectiveUploadHomepage } from "../upload-cover.js";
 import {
   assertCreateQuota,
   createReservedProject,
@@ -49,7 +50,7 @@ export async function prepareUpload(
       await tx.$queryRaw`SELECT id FROM users WHERE id = ${input.owner.id} FOR UPDATE`;
       const existing = await tx.uploadTask.findFirst({
         include: {
-          project: { select: { projectKey: true } },
+          project: { select: { projectKey: true, homepagePath: true } },
           revision: { select: { revisionNumber: true } },
           uploadFiles: true,
         },
@@ -62,15 +63,15 @@ export async function prepareUpload(
       });
       if (existing !== null) assertSameUploadRequest(existing, input);
       if (existing?.status === UploadTaskStatus.COMPLETED)
-        return toPrepared(existing, existing.project.projectKey, true, "completed");
+        return toPrepared(existing, existing.project, true, "completed");
       if (existing?.status === UploadTaskStatus.PROCESSING)
-        return toPrepared(existing, existing.project.projectKey, true, "processing");
+        return toPrepared(existing, existing.project, true, "processing");
       if (
         existing !== null &&
         existing.status !== UploadTaskStatus.EXPIRED &&
         existing.status !== UploadTaskStatus.FAILED
       ) {
-        return toPrepared(existing, existing.project.projectKey, true, "prepared");
+        return toPrepared(existing, existing.project, true, "prepared");
       }
       const project =
         input.action === "replace"
@@ -146,7 +147,7 @@ export async function prepareUpload(
         },
       });
       assertStoredUploadFiles(task.uploadFiles, input.files, project.id, revision.id);
-      return toPrepared(task, project.projectKey, false, "prepared");
+      return toPrepared(task, project, false, "prepared");
     });
   } catch (error) {
     if (isUniqueViolation(error)) throw new UploadError("PROJECT_UPLOAD_CONFLICT");
@@ -158,6 +159,7 @@ function toPrepared(
   task: {
     id: string;
     expiresAt: Date;
+    coverHomepagePath: string | null;
     revision: { revisionNumber: number };
     uploadFiles: readonly {
       expectedContentMd5: string;
@@ -168,11 +170,16 @@ function toPrepared(
       storageKey: string;
     }[];
   },
-  projectId: string,
+  project: { projectKey: string; homepagePath: string | null },
   idempotent: boolean,
   status: PreparedUpload["status"],
 ): PreparedUpload {
   return {
+    coverHomepage: effectiveUploadHomepage(
+      task.uploadFiles,
+      project.homepagePath,
+      task.coverHomepagePath,
+    ),
     expiresAt: task.expiresAt,
     files: task.uploadFiles.map((file) => ({
       contentMd5: file.expectedContentMd5,
@@ -183,7 +190,7 @@ function toPrepared(
       storageKey: file.storageKey,
     })),
     idempotent,
-    projectId,
+    projectId: project.projectKey,
     revisionNumber: task.revision.revisionNumber,
     status,
     uploadId: task.id,
